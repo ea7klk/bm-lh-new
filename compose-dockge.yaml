@@ -1,0 +1,76 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  collector:
+    image: ghcr.io/ea7klk/bm-lh-new:latest
+    command: bminfo-collector
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      BM_URL: ${BM_URL}
+      BM_SOCKETIO_PATH: ${BM_SOCKETIO_PATH}
+      BM_JOIN: ${BM_JOIN}
+      TALKGROUPS_URL: ${TALKGROUPS_URL}
+      TALKGROUPS_SYNC_HOURS: ${TALKGROUPS_SYNC_HOURS}
+      EXCLUDE_LOCAL_TALKGROUP: ${EXCLUDE_LOCAL_TALKGROUP}
+      KERCHUNK_THRESHOLD_SECONDS: ${KERCHUNK_THRESHOLD_SECONDS}
+      COLLECTOR_HEARTBEAT_SECONDS: ${COLLECTOR_HEARTBEAT_SECONDS}
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  web:
+    image: ghcr.io/ea7klk/bm-lh-new:latest
+    command: uvicorn bminfo.web:app --host ${APP_HOST} --port ${APP_PORT}
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      KERCHUNK_THRESHOLD_SECONDS: ${KERCHUNK_THRESHOLD_SECONDS}
+      COLLECTOR_HEARTBEAT_SECONDS: ${COLLECTOR_HEARTBEAT_SECONDS}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      COOKIE_SECURE: ${COOKIE_SECURE}
+      SESSION_HOURS: ${SESSION_HOURS}
+      MATOMO_ENABLED: ${MATOMO_ENABLED}
+      MATOMO_URL: ${MATOMO_URL}
+      MATOMO_SITE_ID: ${MATOMO_SITE_ID}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL}
+      SMTP_ENABLED: ${SMTP_ENABLED}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_USE_TLS: ${SMTP_USE_TLS}
+      SMTP_USE_SSL: ${SMTP_USE_SSL}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME}
+      SMTP_REPLY_TO: ${SMTP_REPLY_TO}
+      SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS}
+      EMAIL_VERIFICATION_HOURS: ${EMAIL_VERIFICATION_HOURS}
+      PASSWORD_RESET_HOURS: ${PASSWORD_RESET_HOURS}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK}"
+      - "traefik.http.services.${TRAEFIK_SERVICE_NAME}.loadbalancer.server.port=${APP_PORT}"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_NAME}.rule=Host(`${TRAEFIK_HOST}`)"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_NAME}.entrypoints=${TRAEFIK_ENTRYPOINT}"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_NAME}.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_NAME}.service=${TRAEFIK_SERVICE_NAME}"
+    networks:
+      - default
+      - traefik
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK}

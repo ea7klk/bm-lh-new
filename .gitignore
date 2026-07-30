@@ -1,0 +1,45 @@
+# Python virtual environments and caches
+.venv/
+venv/
+env/
+.tox/
+.nox/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Build and test output
+build/
+dist/
+*.whl
+*.tar.gz
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Local data, exports, and generated reports
+migration-data/
+reports/
+*.sqlite
+*.sqlite3
+*.db
+*.log
+
+# Editors and operating systems
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.idea/
+.vscode/
+*.swp
+*.swo

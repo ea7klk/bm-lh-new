@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bminfo"
+version = "0.1.0"
+description = "BrandMeister LastHeard statistics collector and web API"
+requires-python = ">=3.11"
+dependencies = [
+  "bcrypt>=4,<5",
+  "fastapi>=0.115,<1",
+  "psycopg[binary]>=3.2,<4",
+  "python-socketio[client]>=5.11,<6",
+  "openpyxl>=3.1,<4",
+  "reportlab>=4,<5",
+  "uvicorn[standard]>=0.30,<1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9"]
+
+[project.scripts]
+bminfo-collector = "bminfo.collector:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+bminfo = ["migrations/*.sql", "translations.json", "live_translations.json"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "."]
+testpaths = ["tests"]
