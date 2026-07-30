@@ -66,6 +66,15 @@ Open <http://localhost:8000> for the dashboard. The API endpoints are:
 - `GET /health`
 - `GET /status` (database, collector, table-row, and active-user status)
 
+## Pull request merge protection
+
+The `Tests` job runs for every push and pull request, and also for merge-queue groups. To prevent
+failed pull requests from being merged, configure the repository's default branch protection
+rules or ruleset with `Tests` as a required status check. Enable the option requiring branches to
+be up to date before merging if you want the check to run against the latest target branch.
+
+The check name is intentionally stable: `Tests`.
+
 `/health` is a simple liveness check. `/status` performs a database connectivity check and
 returns the current `raw_events` and `qsos` row counts, the number of active authenticated users,
 and collector heartbeat freshness. It returns HTTP `200` when all services are healthy and

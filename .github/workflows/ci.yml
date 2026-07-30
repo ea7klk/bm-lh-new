@@ -3,6 +3,7 @@ name: CI and release image
 on:
   push:
   pull_request:
+  merge_group:
   release:
     types: [published]
 
@@ -12,7 +13,7 @@ permissions:
 jobs:
   test:
     name: Tests
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
