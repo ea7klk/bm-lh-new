@@ -3,6 +3,7 @@ from __future__ import annotations
 from email.message import EmailMessage
 from email.utils import formataddr
 from html import escape
+import logging
 from smtplib import SMTP, SMTP_SSL, SMTPException
 import ssl
 from urllib.parse import quote
@@ -10,6 +11,9 @@ from urllib.parse import quote
 from .auth import new_email_verification_token, new_password_reset_token
 from .config import settings
 from .i18n import normalize_locale, translate
+
+
+logger = logging.getLogger(__name__)
 
 
 class EmailDeliveryError(RuntimeError):
@@ -139,13 +143,38 @@ def render_password_reset_email(
     return subject, text_body, html_body
 
 
-def _send_message(message: EmailMessage) -> None:
+def _send_message(message: EmailMessage, email_type: str = "application") -> None:
+    recipient = message.get("To", "")
     if not settings.smtp_enabled:
+        logger.warning(
+            "email delivery skipped: type=%s recipient=%s reason=smtp-disabled",
+            email_type,
+            recipient,
+        )
         raise EmailDeliveryError("SMTP delivery is disabled")
     if not settings.smtp_host or not settings.smtp_from_email:
+        logger.error(
+            "email delivery rejected: type=%s recipient=%s reason=missing-smtp-configuration",
+            email_type,
+            recipient,
+        )
         raise EmailDeliveryError("SMTP host and sender address are required")
     if settings.smtp_use_ssl and settings.smtp_use_tls:
+        logger.error(
+            "email delivery rejected: type=%s recipient=%s reason=conflicting-tls-settings",
+            email_type,
+            recipient,
+        )
         raise EmailDeliveryError("SMTP_USE_SSL and SMTP_USE_TLS cannot both be enabled")
+    logger.info(
+        "sending email: type=%s recipient=%s smtp=%s:%s tls=%s ssl=%s",
+        email_type,
+        recipient,
+        settings.smtp_host,
+        settings.smtp_port,
+        settings.smtp_use_tls,
+        settings.smtp_use_ssl,
+    )
     try:
         if settings.smtp_use_ssl:
             server = SMTP_SSL(
@@ -167,7 +196,15 @@ def _send_message(message: EmailMessage) -> None:
                 server.login(settings.smtp_username, settings.smtp_password)
             server.send_message(message)
     except (OSError, SMTPException) as exc:
+        logger.exception(
+            "email delivery failed: type=%s recipient=%s smtp=%s:%s",
+            email_type,
+            recipient,
+            settings.smtp_host,
+            settings.smtp_port,
+        )
         raise EmailDeliveryError("Unable to deliver email") from exc
+    logger.info("email delivered: type=%s recipient=%s", email_type, recipient)
 
 
 def _message(
@@ -195,7 +232,7 @@ def send_verification_email(
 ) -> str:
     token = token or new_email_verification_token()
     subject, text_body, html_body = render_verification_email(callsign, token, locale)
-    _send_message(_message(subject, email, text_body, html_body))
+    _send_message(_message(subject, email, text_body, html_body), "verification")
     return token
 
 
@@ -207,7 +244,7 @@ def send_password_reset_email(
 ) -> str:
     token = token or new_password_reset_token()
     subject, text_body, html_body = render_password_reset_email(callsign, token, locale)
-    _send_message(_message(subject, email, text_body, html_body))
+    _send_message(_message(subject, email, text_body, html_body), "password-reset")
     return token
 
 
@@ -277,5 +314,5 @@ def send_email_change_email(
     subject, text_body, html_body = render_email_change_email(
         callsign, token, locale, stage, new_email
     )
-    _send_message(_message(subject, email, text_body, html_body))
+    _send_message(_message(subject, email, text_body, html_body), f"email-change-{stage}")
     return token

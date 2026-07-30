@@ -7,6 +7,9 @@ import pytest
 import bminfo.web as web
 import bminfo.email as email_module
 from bminfo.email import (
+    EmailDeliveryError,
+    _message,
+    _send_message,
     email_change_url,
     render_password_reset_email,
     render_email_change_email,
@@ -84,6 +87,62 @@ def test_email_change_url_contains_stage_and_language(monkeypatch):
     assert email_change_url("token", "new", "es") == (
         "http://localhost:8000/user/change-email/confirm?token=token&stage=new&lang=es"
     )
+
+
+def test_mail_logging_includes_recipient_when_smtp_is_disabled(monkeypatch, caplog):
+    monkeypatch.setattr(
+        email_module,
+        "settings",
+        replace(email_module.settings, smtp_enabled=False),
+    )
+    message = _message("Subject", "volker@example.com", "body", "<p>body</p>")
+
+    with caplog.at_level("WARNING", logger=email_module.logger.name):
+        with pytest.raises(EmailDeliveryError):
+            _send_message(message, "verification")
+
+    assert "smtp-disabled" in caplog.text
+    assert "volker@example.com" in caplog.text
+
+
+def test_mail_logging_records_successful_delivery(monkeypatch, caplog):
+    sent = []
+
+    class SMTPStub:
+        def __init__(self, host, port, timeout):
+            self.host = host
+            self.port = port
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def send_message(self, message):
+            sent.append(message)
+
+    monkeypatch.setattr(
+        email_module,
+        "settings",
+        replace(
+            email_module.settings,
+            smtp_enabled=True,
+            smtp_use_tls=False,
+            smtp_use_ssl=False,
+            smtp_username="",
+        ),
+    )
+    monkeypatch.setattr(email_module, "SMTP", SMTPStub)
+    message = _message("Subject", "volker@example.com", "body", "<p>body</p>")
+
+    with caplog.at_level("INFO", logger=email_module.logger.name):
+        _send_message(message, "password-reset")
+
+    assert sent == [message]
+    assert "sending email: type=password-reset" in caplog.text
+    assert "email delivered: type=password-reset" in caplog.text
+    assert "volker@example.com" in caplog.text
 
 
 def test_about_page_contains_project_and_license_links():
