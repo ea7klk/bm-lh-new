@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta, timezone
 import csv
 import html
@@ -72,8 +72,30 @@ TIME_RANGES = {
 }
 AUTHENTICATED_TIME_RANGES = frozenset({"2w", "1M", "2M", "3M"})
 
-app = FastAPI(title="BrandMeister Statistics")
 store: PostgresStore | None = None
+
+
+def startup() -> None:
+    get_store().initialize(settings.kerchunk_threshold_seconds)
+
+
+def shutdown() -> None:
+    global store
+    if store is not None:
+        store.close()
+        store = None
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    startup()
+    try:
+        yield
+    finally:
+        shutdown()
+
+
+app = FastAPI(title="BrandMeister Statistics", lifespan=lifespan)
 
 
 def detect_locale(request: Request) -> str:
@@ -193,17 +215,6 @@ def _public_callsign(row: dict[str, Any]) -> dict[str, Any]:
         "uniqueTalkgroups": row.get("unique_talkgroups", 0),
         "lastSeen": row.get("last_seen_at"),
     }
-
-
-@app.on_event("startup")
-def startup() -> None:
-    get_store().initialize(settings.kerchunk_threshold_seconds)
-
-
-@app.on_event("shutdown")
-def shutdown() -> None:
-    if store is not None:
-        store.close()
 
 
 @app.get("/health")
