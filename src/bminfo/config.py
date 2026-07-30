@@ -2,13 +2,26 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from urllib.parse import quote
+
+
+def _database_url() -> str:
+    """Build the PostgreSQL DSN from components, retaining an optional legacy override."""
+    explicit_url = os.getenv("DATABASE_URL", "").strip()
+    if explicit_url:
+        return explicit_url
+
+    username = quote(os.getenv("POSTGRES_USER", "bminfo"), safe="")
+    password = quote(os.getenv("POSTGRES_PASSWORD", "bminfo"), safe="")
+    host = os.getenv("POSTGRES_HOST", "localhost")
+    port = os.getenv("POSTGRES_PORT", "5432")
+    database = quote(os.getenv("POSTGRES_DB", "bminfo"), safe="")
+    return f"postgresql://{username}:{password}@{host}:{port}/{database}"
 
 
 @dataclass(frozen=True)
 class Settings:
-    database_url: str = os.getenv(
-        "DATABASE_URL", "postgresql://bminfo:bminfo@localhost:5432/bminfo"
-    )
+    database_url: str = _database_url()
     bm_url: str = os.getenv("BM_URL", "https://api.brandmeister.network")
     bm_socketio_path: str = os.getenv("BM_SOCKETIO_PATH", "/lh/socket.io")
     bm_join: str = os.getenv("BM_JOIN", "everything")

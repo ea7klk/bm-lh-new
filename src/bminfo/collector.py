@@ -18,6 +18,13 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
 logger = logging.getLogger(__name__)
+STORED_QSO_LOG_BLOCK = 100
+
+
+def _log_stored_qso_progress(stored_qso_count: int) -> None:
+    """Log successful QSO storage in coarse progress blocks."""
+    if stored_qso_count > 0 and stored_qso_count % STORED_QSO_LOG_BLOCK == 0:
+        logger.info("stored %d QSOs (progress block of %d)", stored_qso_count, STORED_QSO_LOG_BLOCK)
 
 
 def _talkgroup_sync_loop(stop_event: threading.Event) -> None:
@@ -68,6 +75,7 @@ def run() -> None:
         reconnection_delay=5,
         reconnection_delay_max=60,
     )
+    stored_qso_count = 0
 
     @sio.event
     def connect() -> None:
@@ -81,6 +89,7 @@ def run() -> None:
 
     @sio.on("mqtt")
     def on_mqtt(data: object) -> None:
+        nonlocal stored_qso_count
         event = parse_event(data)
         if event is None:
             logger.warning("ignored malformed mqtt payload")
@@ -101,13 +110,8 @@ def run() -> None:
             qso = None
         stored = store.ingest(event, qso)
         if stored:
-            logger.info(
-                "stored QSO %s: %s -> %s for %.3fs",
-                qso.session_id,
-                qso.source_call or qso.source_id or "unknown",
-                qso.destination_call or qso.destination_id or "unknown",
-                qso.duration_ms / 1000,
-            )
+            stored_qso_count += 1
+            _log_stored_qso_progress(stored_qso_count)
         elif qso is not None:
             logger.debug("filtered non-displayable QSO %s", qso.session_id)
         elif event.event_type.casefold() == "session-stop":

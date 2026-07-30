@@ -36,6 +36,7 @@ from .config import settings
 from .consent import cookie_consent_markup, cookie_consent_script
 from .email import (
     EmailDeliveryError,
+    send_email_change_email,
     send_password_reset_email,
     send_verification_email,
 )
@@ -915,6 +916,7 @@ def user_profile(request: Request) -> Response:
 <div class="stats"><div class="stat"><small>{_escape(translate(locale, "user.qsoCount"))}</small><strong>{_escape(stats['qso_count'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "home.talkTime"))}</small><strong>{_escape(round(stats['duration_seconds'],1))} s</strong></div><div class="stat"><small>{_escape(translate(locale, "user.uniqueTalkgroups"))}</small><strong>{_escape(stats['unique_talkgroups'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "home.lastHeard"))}</small><strong>{_escape(_format_datetime(stats['last_qso_at']))}</strong></div></div></section>
 <section class="card"><h2>{_escape(translate(locale, "user.topTalkgroups"))}</h2><div class="table-wrap"><table><thead><tr><th>{_escape(translate(locale, "home.talkgroup"))}</th><th>{_escape(translate(locale, "user.id"))}</th><th>{_escape(translate(locale, "user.qsoCount"))}</th><th>{_escape(translate(locale, "home.talkTime"))}</th></tr></thead><tbody>{top_rows}</tbody></table></div></section>
 <section class="card form"><h2>{_escape(translate(locale, "user.changePassword"))}</h2><form method="post" action="/user/change-password"><label>{_escape(translate(locale, "user.currentPassword"))}</label><input type="password" name="current_password" required><label>{_escape(translate(locale, "user.newPassword"))}</label><input type="password" name="new_password" minlength="8" required><button class="button" type="submit">{_escape(translate(locale, "user.changePasswordButton"))}</button></form></section>
+<section class="card form"><h2>{_escape(translate(locale, "user.changeEmail"))}</h2><p class="muted">{_escape(translate(locale, "user.currentEmail"))}: {_escape(user['email'])}</p><form method="post" action="/user/change-email"><label for="new_email">{_escape(translate(locale, "user.newEmail"))}</label><input id="new_email" type="email" name="new_email" required maxlength="240" autocomplete="email"><button class="button" type="submit">{_escape(translate(locale, "user.changeEmailButton"))}</button></form></section>
 """
     return _account_page_with_metrics(
         translate(locale, "user.profile"),
@@ -1768,6 +1770,127 @@ async def user_change_password(request: Request) -> Response:
     return RedirectResponse("/user/profile", status_code=303)
 
 
+@app.post("/user/change-email")
+async def user_change_email(request: Request) -> Response:
+    locale = request_locale(request)
+    user = _current_user(request)
+    if user is None:
+        return RedirectResponse("/user/login", status_code=303)
+    fields = await _form_fields(request)
+    new_email = fields.get("new_email", "").strip().lower()
+    profile_link = f'<a class="button" href="/user/profile">{_escape(translate(locale, "user.profile"))}</a>'
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", new_email):
+        return _account_page(
+            translate(locale, "user.changeEmail"),
+            f'<section class="card form"><p class="error">{_escape(translate(locale, "user.emailChangeInvalidEmail"))}</p>{profile_link}</section>',
+            locale,
+        )
+    if new_email == user["email"].lower():
+        return _account_page(
+            translate(locale, "user.changeEmail"),
+            f'<section class="card form"><p class="error">{_escape(translate(locale, "user.emailChangeSame"))}</p>{profile_link}</section>',
+            locale,
+        )
+    existing = get_store().user_by_email(new_email)
+    if existing is not None and existing.get("id") != user["id"]:
+        return _account_page(
+            translate(locale, "user.changeEmail"),
+            f'<section class="card form"><p class="error">{_escape(translate(locale, "user.emailChangeDuplicate"))}</p>{profile_link}</section>',
+            locale,
+        )
+
+    token = new_email_verification_token()
+    get_store().create_email_change(
+        user["id"],
+        user["email"],
+        new_email,
+        session_token_hash(token),
+        datetime.now(tz=UTC) + timedelta(hours=settings.email_verification_hours),
+    )
+    try:
+        send_email_change_email(
+            user["email"], user["callsign"], locale, token, "old", new_email
+        )
+    except EmailDeliveryError:
+        get_store().delete_email_change(user["id"])
+        return _account_page(
+            translate(locale, "user.changeEmail"),
+            f'<section class="card form"><p class="error">{_escape(translate(locale, "user.emailChangeDeliveryFailed"))}</p>{profile_link}</section>',
+            locale,
+        )
+    return _account_page(
+        translate(locale, "user.changeEmail"),
+        f'<section class="card form"><p class="success">{_escape(translate(locale, "user.emailChangePending"))}</p>{profile_link}</section>',
+        locale,
+    )
+
+
+@app.get("/user/change-email/confirm", response_class=HTMLResponse)
+def user_change_email_confirm(
+    request: Request,
+    token: str = "",
+    stage: str = "",
+) -> Response:
+    locale = request_locale(request)
+    profile_link = f'<a class="button" href="/user/profile">{_escape(translate(locale, "user.profile"))}</a>'
+    if not token or stage not in {"old", "new"}:
+        return _account_page(
+            translate(locale, "user.emailChangeInvalidTitle"),
+            f'<section class="card form"><p class="error">{_escape(translate(locale, "user.emailChangeInvalid"))}</p>{profile_link}</section>',
+            locale,
+        )
+    if stage == "old":
+        new_token = new_email_verification_token()
+        change = get_store().confirm_old_email_change(
+            session_token_hash(token), session_token_hash(new_token)
+        )
+        if change is None:
+            return _account_page(
+                translate(locale, "user.emailChangeInvalidTitle"),
+                f'<section class="card form"><p class="error">{_escape(translate(locale, "user.emailChangeInvalid"))}</p>{profile_link}</section>',
+                locale,
+            )
+        try:
+            send_email_change_email(
+                change["new_email"],
+                change["callsign"],
+                locale,
+                new_token,
+                "new",
+                change["new_email"],
+            )
+        except EmailDeliveryError:
+            return _account_page(
+                translate(locale, "user.emailChangeConfirmOldTitle"),
+                f'<section class="card form"><p class="error">{_escape(translate(locale, "user.emailChangeDeliveryFailed"))}</p>{profile_link}</section>',
+                locale,
+            )
+        return _account_page(
+            translate(locale, "user.emailChangeConfirmOldTitle"),
+            f'<section class="card form"><p class="success">{_escape(translate(locale, "user.emailChangeOldConfirmed"))}</p>{profile_link}</section>',
+            locale,
+        )
+
+    result = get_store().confirm_new_email_change(session_token_hash(token))
+    if result is None:
+        return _account_page(
+            translate(locale, "user.emailChangeInvalidTitle"),
+            f'<section class="card form"><p class="error">{_escape(translate(locale, "user.emailChangeInvalid"))}</p>{profile_link}</section>',
+            locale,
+        )
+    if result.get("error") == "duplicate":
+        return _account_page(
+            translate(locale, "user.emailChangeConfirmNewTitle"),
+            f'<section class="card form"><p class="error">{_escape(translate(locale, "user.emailChangeDuplicate"))}</p>{profile_link}</section>',
+            locale,
+        )
+    return _account_page(
+        translate(locale, "user.emailChangeSuccessTitle"),
+        f'<section class="card form"><p class="success">{_escape(translate(locale, "user.emailChangeSuccess"))}</p>{profile_link}</section>',
+        locale,
+    )
+
+
 @app.get("/admin/login", response_class=HTMLResponse)
 def admin_login_page(request: Request) -> HTMLResponse:
     locale = request_locale(request)
@@ -1801,10 +1924,12 @@ def _admin_user_row(user: dict[str, Any], locale: str = "en") -> str:
     action = translate(locale, "admin.deactivate" if active else "admin.activate")
     active_value = "false" if active else "true"
     confirm_delete = _escape(json.dumps(translate(locale, "admin.confirmDelete")))
+    confirm_expire = _escape(json.dumps(translate(locale, "admin.confirmExpireSessions")))
     return f"""
 <tr><td>{_escape(user['callsign'])}</td><td>{_escape(user['name'])}</td><td>{_escape(user['email'])}</td>
 <td>{status}</td><td>{_escape(user['qso_count'])}</td><td>{_escape(round(user['duration_seconds'], 1))} s</td>
 <td><form class="inline" method="post" action="/admin/users/{user['id']}/status"><input type="hidden" name="active" value="{active_value}"><button class="button secondary" type="submit">{_escape(action)}</button></form>
+<form class="inline" method="post" action="/admin/users/{user['id']}/expire-sessions" onsubmit="return window.confirm({confirm_expire})"><button class="button secondary" type="submit">{_escape(translate(locale, "admin.expireSessions"))}</button></form>
 <form class="inline" method="post" action="/admin/users/{user['id']}/delete" onsubmit="return window.confirm({confirm_delete})"><button class="button danger" type="submit">{_escape(translate(locale, "admin.delete"))}</button></form></td></tr>
 """
 
@@ -1860,6 +1985,10 @@ def _admin_maintenance_notice(request: Request, locale: str) -> str:
             message = translate(locale, "adminMaintenance.qsoDeleteSuccess").format(
                 count=int(request.query_params.get("count", "0")),
                 period=_admin_retention_period(locale, months),
+            )
+        elif notice == "sessions":
+            message = translate(locale, "admin.sessionsExpired").format(
+                count=int(request.query_params.get("count", "0")),
             )
         else:
             return ""
@@ -2043,6 +2172,16 @@ def admin_user_delete_page(user_id: int, request: Request) -> Response:
     if request.headers.get("accept", "").startswith("application/json"):
         return JSONResponse({"deleted": deleted})
     return _admin_redirect()
+
+
+@app.post("/admin/users/{user_id}/expire-sessions")
+def admin_user_expire_sessions(user_id: int, request: Request) -> Response:
+    if not _admin_allowed(request):
+        return JSONResponse({"error": "admin authentication required"}, status_code=401)
+    expired = get_store().expire_user_sessions(user_id)
+    if request.headers.get("accept", "").startswith("application/json"):
+        return JSONResponse({"expired": expired, "user_id": user_id})
+    return _admin_redirect(urlencode({"notice": "sessions", "count": expired}))
 
 
 @app.delete("/admin/users/{user_id}")

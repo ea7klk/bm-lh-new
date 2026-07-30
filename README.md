@@ -39,7 +39,8 @@ Create a PostgreSQL database, then run:
 python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
-export DATABASE_URL='postgresql://bminfo:bminfo@localhost:5432/bminfo'
+export POSTGRES_HOST=localhost POSTGRES_PORT=5432
+export POSTGRES_DB=bminfo POSTGRES_USER=bminfo POSTGRES_PASSWORD=bminfo
 bminfo-collector
 ```
 

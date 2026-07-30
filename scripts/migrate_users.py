@@ -25,6 +25,7 @@ from pathlib import Path
 import re
 import sys
 from typing import Any, Iterable
+from urllib.parse import quote
 
 import psycopg
 from psycopg.rows import dict_row
@@ -279,6 +280,20 @@ def _dsn(value: str | None, environment_name: str) -> str:
     return result
 
 
+def _target_dsn(value: str | None) -> str:
+    if value:
+        return value
+    explicit_url = os.getenv("DATABASE_URL", "").strip()
+    if explicit_url:
+        return explicit_url
+    username = quote(os.getenv("POSTGRES_USER", "bminfo"), safe="")
+    password = quote(os.getenv("POSTGRES_PASSWORD", "bminfo"), safe="")
+    host = os.getenv("POSTGRES_HOST", "localhost")
+    port = os.getenv("POSTGRES_PORT", "5432")
+    database = quote(os.getenv("POSTGRES_DB", "bminfo"), safe="")
+    return f"postgresql://{username}:{password}@{host}:{port}/{database}"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -311,7 +326,7 @@ def main(argv: list[str] | None = None) -> int:
 
         users = load_export(args.input)
         summary = import_users(
-            _dsn(args.target_dsn, "DATABASE_URL"),
+            _target_dsn(args.target_dsn),
             users,
             on_conflict=args.on_conflict,
             dry_run=args.dry_run,

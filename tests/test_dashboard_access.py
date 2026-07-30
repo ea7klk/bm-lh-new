@@ -319,12 +319,82 @@ def test_user_profile_has_logout_control(monkeypatch):
     assert 'action="/user/logout"' in page
 
 
+def test_user_profile_has_email_change_form(monkeypatch):
+    monkeypatch.setattr(
+        web,
+        "_current_user",
+        lambda request: {
+            "id": 7,
+            "callsign": "EA7KLK",
+            "name": "Test Operator",
+            "email": "test@example.com",
+        },
+    )
+    monkeypatch.setattr(
+        web,
+        "get_store",
+        lambda: type(
+            "ProfileStore",
+            (),
+            {
+                "user_statistics": lambda self, callsign: {
+                    "qso_count": 0,
+                    "duration_seconds": 0,
+                    "unique_talkgroups": 0,
+                    "last_qso_at": None,
+                    "top_talkgroups": [],
+                }
+            },
+        )(),
+    )
+
+    page = web.user_profile(_request()).body.decode("utf-8")
+
+    assert 'action="/user/change-email"' in page
+    assert 'name="new_email"' in page
+
+
 def test_admin_maintenance_endpoints_require_admin(monkeypatch):
     monkeypatch.setattr(web, "_admin_allowed", lambda request: False)
 
     assert web.admin_rebuild_qsos(_request()).status_code == 401
     assert web.admin_clear_raw_events(1, _request()).status_code == 401
     assert web.admin_clear_qsos(1, _request()).status_code == 401
+
+
+def test_admin_can_expire_sessions_for_one_user(monkeypatch):
+    monkeypatch.setattr(web, "_admin_allowed", lambda request: True)
+    calls = {}
+
+    class SessionStore:
+        def expire_user_sessions(self, user_id):
+            calls["user_id"] = user_id
+            return 3
+
+    monkeypatch.setattr(web, "get_store", lambda: SessionStore())
+
+    response = web.admin_user_expire_sessions(7, _request())
+
+    assert calls["user_id"] == 7
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin?notice=sessions&count=3"
+
+
+def test_admin_user_row_includes_individual_session_expiry_action():
+    row = web._admin_user_row(
+        {
+            "id": 7,
+            "callsign": "EA7KLK",
+            "name": "Test Operator",
+            "email": "test@example.com",
+            "is_active": True,
+            "qso_count": 0,
+            "duration_seconds": 0,
+        }
+    )
+
+    assert 'action="/admin/users/7/expire-sessions"' in row
+    assert "Expire sessions" in row
 
 
 def test_admin_maintenance_rejects_unsupported_retention_period(monkeypatch):

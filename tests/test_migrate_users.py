@@ -3,6 +3,28 @@ from datetime import datetime, timezone
 
 from bminfo.auth import hash_password
 from scripts.migrate_users import _normalise_user, _source_epoch, load_export
+from scripts.migrate_users import _target_dsn
+from bminfo.config import _database_url
+
+
+def test_database_dsn_is_built_from_postgres_components(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("POSTGRES_HOST", "db.example")
+    monkeypatch.setenv("POSTGRES_PORT", "5433")
+    monkeypatch.setenv("POSTGRES_DB", "statistics")
+    monkeypatch.setenv("POSTGRES_USER", "report user")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "p@ssword")
+
+    expected = "postgresql://report%20user:p%40ssword@db.example:5433/statistics"
+    assert _database_url() == expected
+    assert _target_dsn(None) == expected
+
+
+def test_explicit_database_url_remains_a_compatibility_override(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://legacy/connection")
+
+    assert _database_url() == "postgresql://legacy/connection"
+    assert _target_dsn(None) == "postgresql://legacy/connection"
 
 
 def test_reference_user_is_normalised_for_target_schema():

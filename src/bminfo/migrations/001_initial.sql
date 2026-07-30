@@ -160,3 +160,24 @@ CREATE INDEX IF NOT EXISTS password_reset_tokens_user_id_idx
 
 CREATE INDEX IF NOT EXISTS password_reset_tokens_expires_at_idx
     ON password_reset_tokens (expires_at);
+
+-- Email changes require sequential confirmation at both the old and new address.
+CREATE TABLE IF NOT EXISTS email_change_requests (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    old_email TEXT NOT NULL,
+    new_email TEXT NOT NULL,
+    old_token_hash TEXT NOT NULL UNIQUE,
+    new_token_hash TEXT UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    old_confirmed_at TIMESTAMPTZ,
+    new_confirmed_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS email_change_requests_pending_user_idx
+    ON email_change_requests (user_id)
+    WHERE new_confirmed_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS email_change_requests_expires_at_idx
+    ON email_change_requests (expires_at);

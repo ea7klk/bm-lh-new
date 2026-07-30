@@ -7,7 +7,9 @@ import pytest
 import bminfo.web as web
 import bminfo.email as email_module
 from bminfo.email import (
+    email_change_url,
     render_password_reset_email,
+    render_email_change_email,
     render_verification_email,
     verification_url,
 )
@@ -59,6 +61,29 @@ def test_password_reset_email_has_localized_html_and_text(locale):
     assert "reset-123" in text_body
     assert "reset-123" in html_body
     assert "passwordReset.button" not in html_body
+
+
+@pytest.mark.parametrize("locale", SUPPORTED_LOCALES)
+def test_email_change_messages_have_two_localized_stages(locale):
+    subject, text_body, html_body = render_email_change_email(
+        "EA7KLK", "change-token", locale, "old", "new@example.com"
+    )
+
+    assert subject != "emailChange.oldSubject"
+    assert "new@example.com" in text_body
+    assert "change-token" in html_body
+    assert email_change_url("change-token", "old", locale) in text_body
+
+
+def test_email_change_url_contains_stage_and_language(monkeypatch):
+    monkeypatch.setattr(
+        email_module,
+        "settings",
+        replace(email_module.settings, app_public_url="http://localhost:8000"),
+    )
+    assert email_change_url("token", "new", "es") == (
+        "http://localhost:8000/user/change-email/confirm?token=token&stage=new&lang=es"
+    )
 
 
 def test_about_page_contains_project_and_license_links():
@@ -201,3 +226,66 @@ def test_registration_creates_unverified_user_and_sends_email(monkeypatch):
     assert calls["user"][0] == "EA7KLK"
     assert calls["verification"][0] == 7
     assert calls["email"][0] == "volker@example.com"
+
+
+def test_email_change_requires_old_then_new_confirmation(monkeypatch):
+    calls = {}
+
+    class ChangeStore:
+        def user_by_email(self, email):
+            return None
+
+        def create_email_change(self, user_id, old_email, new_email, token_hash, expires_at):
+            calls["created"] = (user_id, old_email, new_email, token_hash, expires_at)
+
+        def delete_email_change(self, user_id):
+            calls["deleted"] = user_id
+
+        def confirm_old_email_change(self, token_hash, new_token_hash):
+            calls["old"] = (token_hash, new_token_hash)
+            return {
+                "new_email": "new@example.com",
+                "callsign": "EA7KLK",
+            }
+
+        def confirm_new_email_change(self, token_hash):
+            calls["new"] = token_hash
+            return {"id": 7, "email": "new@example.com"}
+
+    sent = []
+
+    def fake_send(email, callsign, locale, token, stage, new_email=""):
+        sent.append((email, callsign, locale, token, stage, new_email))
+        return token
+
+    monkeypatch.setattr(web, "get_store", lambda: ChangeStore())
+    monkeypatch.setattr(
+        web,
+        "_current_user",
+        lambda request: {
+            "id": 7,
+            "callsign": "EA7KLK",
+            "email": "old@example.com",
+        },
+    )
+    monkeypatch.setattr(web, "send_email_change_email", fake_send)
+
+    response = asyncio.run(
+        web.user_change_email(_request(body=b"new_email=new%40example.com"))
+    )
+    assert response.status_code == 200
+    assert sent[-1][0:3] == ("old@example.com", "EA7KLK", "en")
+    assert sent[-1][4] == "old"
+
+    old_confirmation = web.user_change_email_confirm(
+        _request(), token="old-token", stage="old"
+    )
+    assert old_confirmation.status_code == 200
+    assert sent[-1][0] == "new@example.com"
+    assert sent[-1][4] == "new"
+
+    new_confirmation = web.user_change_email_confirm(
+        _request(), token="new-token", stage="new"
+    )
+    assert new_confirmation.status_code == 200
+    assert "Email address updated" in new_confirmation.body.decode("utf-8")

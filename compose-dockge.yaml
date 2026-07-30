@@ -12,7 +12,11 @@ services:
     image: ghcr.io/ea7klk/bm-lh-new:latest
     command: bminfo-collector
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       BM_URL: ${BM_URL}
       BM_SOCKETIO_PATH: ${BM_SOCKETIO_PATH}
       BM_JOIN: ${BM_JOIN}
@@ -29,7 +33,11 @@ services:
     image: ghcr.io/ea7klk/bm-lh-new:latest
     command: uvicorn bminfo.web:app --host ${APP_HOST} --port ${APP_PORT}
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       KERCHUNK_THRESHOLD_SECONDS: ${KERCHUNK_THRESHOLD_SECONDS}
       COLLECTOR_HEARTBEAT_SECONDS: ${COLLECTOR_HEARTBEAT_SECONDS}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}

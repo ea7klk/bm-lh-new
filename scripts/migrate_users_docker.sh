@@ -23,7 +23,8 @@ else
 fi
 
 # Pass the source DSN explicitly when it is supplied through the host environment. The target
-# DATABASE_URL is already provided by the Compose web service and points at the postgres service.
+# PostgreSQL connection components are provided by the Compose web service; the migration helper
+# builds the target DSN from them unless --target-dsn or DATABASE_URL is explicitly supplied.
 RUN_ARGS=(run --rm --no-deps)
 if [[ -n "${REFERENCE_DATABASE_URL:-}" ]]; then
     RUN_ARGS+=(-e "REFERENCE_DATABASE_URL=${REFERENCE_DATABASE_URL}")

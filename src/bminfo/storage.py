@@ -799,6 +799,138 @@ class PostgresStore:
                 (user_id, token_hash, expires_at),
             )
 
+    def create_email_change(
+        self,
+        user_id: int,
+        old_email: str,
+        new_email: str,
+        old_token_hash: str,
+        expires_at: datetime,
+    ) -> None:
+        """Start a new two-address email change confirmation flow."""
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM email_change_requests WHERE user_id = %s",
+                (user_id,),
+            )
+            cursor.execute(
+                """
+                INSERT INTO email_change_requests
+                    (user_id, old_email, new_email, old_token_hash, expires_at)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (user_id, old_email, new_email, old_token_hash, expires_at),
+            )
+
+    def delete_email_change(self, user_id: int) -> None:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM email_change_requests WHERE user_id = %s",
+                (user_id,),
+            )
+
+    def confirm_old_email_change(
+        self,
+        token_hash: str,
+        new_token_hash: str,
+    ) -> dict[str, Any] | None:
+        """Consume the old-address confirmation and arm the new-address token."""
+        with self.connection.transaction():
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT r.id, r.user_id, r.old_email, r.new_email,
+                           u.callsign
+                    FROM email_change_requests r
+                    JOIN users u ON u.id = r.user_id
+                    WHERE r.old_token_hash = %s
+                      AND r.old_confirmed_at IS NULL
+                      AND r.expires_at > now()
+                      AND lower(u.email) = lower(r.old_email)
+                    FOR UPDATE
+                    """,
+                    (token_hash,),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    return None
+                cursor.execute(
+                    """
+                    UPDATE email_change_requests
+                    SET old_confirmed_at = now(), new_token_hash = %s
+                    WHERE id = %s
+                    """,
+                    (new_token_hash, row[0]),
+                )
+                return {
+                    "id": row[0],
+                    "user_id": row[1],
+                    "old_email": row[2],
+                    "new_email": row[3],
+                    "callsign": row[4],
+                }
+
+    def confirm_new_email_change(self, token_hash: str) -> dict[str, Any] | None:
+        """Apply a new email only after both confirmation links were used."""
+        with self.connection.transaction():
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT r.id, r.user_id, r.new_email, u.callsign
+                    FROM email_change_requests r
+                    JOIN users u ON u.id = r.user_id
+                    WHERE r.new_token_hash = %s
+                      AND r.old_confirmed_at IS NOT NULL
+                      AND r.new_confirmed_at IS NULL
+                      AND r.expires_at > now()
+                    FOR UPDATE
+                    """,
+                    (token_hash,),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    return None
+                cursor.execute(
+                    """
+                    SELECT 1 FROM users
+                    WHERE lower(email) = lower(%s) AND id <> %s
+                    """,
+                    (row[2], row[1]),
+                )
+                if cursor.fetchone() is not None:
+                    return {
+                        "error": "duplicate",
+                        "user_id": row[1],
+                        "callsign": row[3],
+                    }
+                cursor.execute(
+                    """
+                    UPDATE users
+                    SET email = %s
+                    WHERE id = %s
+                    RETURNING id, callsign, name, email, is_active,
+                              created_at, last_login_at, email_verified_at
+                    """,
+                    (row[2], row[1]),
+                )
+                user = cursor.fetchone()
+                if user is None:
+                    return None
+                columns = [column.name for column in cursor.description]
+                cursor.execute(
+                    """
+                    UPDATE email_change_requests
+                    SET new_confirmed_at = now()
+                    WHERE id = %s
+                    """,
+                    (row[0],),
+                )
+                cursor.execute(
+                    "DELETE FROM email_change_requests WHERE id = %s",
+                    (row[0],),
+                )
+                return dict(zip(columns, user))
+
     def password_reset_user(self, token_hash: str) -> dict[str, Any] | None:
         with self.connection.cursor() as cursor:
             cursor.execute(
@@ -955,6 +1087,12 @@ class PostgresStore:
     def delete_session(self, token_hash: str) -> None:
         with self.connection.cursor() as cursor:
             cursor.execute("DELETE FROM user_sessions WHERE token_hash = %s", (token_hash,))
+
+    def expire_user_sessions(self, user_id: int) -> int:
+        """Expire every active login session belonging to one user."""
+        with self.connection.cursor() as cursor:
+            cursor.execute("DELETE FROM user_sessions WHERE user_id = %s", (user_id,))
+            return int(cursor.rowcount)
 
     def mark_user_login(self, user_id: int) -> None:
         with self.connection.cursor() as cursor:
