@@ -5,11 +5,11 @@ the corresponding function has been implemented and verified.
 
 ## Activity and trends
 
-- [ ] QSOs by hour and day of week.
-- [ ] Peak activity periods.
-- [ ] Traffic trend compared with the previous period.
-- [ ] Busiest talkgroups by growth rate, not just total QSOs.
-- [ ] Concurrent active talkgroups or sources over time.
+- [x] QSOs by hour and day of week.
+- [x] Peak activity periods.
+- [x] Traffic trend compared with the previous period.
+- [x] Busiest talkgroups by growth rate, not just total QSOs.
+- [x] Concurrent active talkgroups or sources over time.
 
 ## Callsign insights
 

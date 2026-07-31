@@ -1268,6 +1268,71 @@ def _report_histogram(rows: list[dict[str, Any]], bucket_seconds: int, locale: s
     return f'<div class="histogram">{"".join(columns)}</div>'
 
 
+def _report_hour_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {**row, "label": f"{int(row.get('hour') or 0):02d}:00"}
+        for row in rows
+    ]
+
+
+def _report_weekday_rows(rows: list[dict[str, Any]], locale: str) -> list[dict[str, Any]]:
+    weekday_keys = {
+        1: "monday",
+        2: "tuesday",
+        3: "wednesday",
+        4: "thursday",
+        5: "friday",
+        6: "saturday",
+        7: "sunday",
+    }
+    return [
+        {
+            **row,
+            "label": translate(locale, f"reports.{weekday_keys.get(int(row.get('weekday') or 0), 'monday')}"),
+        }
+        for row in rows
+    ]
+
+
+def _report_concurrency_chart(
+    rows: list[dict[str, Any]],
+    bucket_seconds: int,
+    locale: str,
+    empty_label: str,
+) -> str:
+    if not rows or not any(
+        int(row.get("active_talkgroups") or 0) or int(row.get("active_sources") or 0)
+        for row in rows
+    ):
+        return f'<p class="muted">{_escape(empty_label)}</p>'
+    maximum = max(
+        max(int(row.get("active_talkgroups") or 0), int(row.get("active_sources") or 0))
+        for row in rows
+    ) or 1
+    label_step = max(1, len(rows) // 10)
+    columns = []
+    for index, row in enumerate(rows):
+        label = _report_histogram_label(row.get("bucket"), bucket_seconds)
+        visible_label = label if index % label_step == 0 or index == len(rows) - 1 else ""
+        talkgroups = int(row.get("active_talkgroups") or 0)
+        sources = int(row.get("active_sources") or 0)
+        columns.append(
+            f'<div class="concurrency-column" title="{_escape(label)}">'
+            f'<i class="concurrency-talkgroups" style="height:{talkgroups / maximum * 100:.1f}%" '
+            f'title="{_escape(translate(locale, "reports.activeTalkgroups"))}: {talkgroups}"></i>'
+            f'<i class="concurrency-sources" style="height:{sources / maximum * 100:.1f}%" '
+            f'title="{_escape(translate(locale, "reports.activeSources"))}: {sources}"></i>'
+            f'<small>{_escape(visible_label)}</small></div>'
+        )
+    legend = (
+        f'<div class="concurrency-legend">'
+        f'<span><i class="concurrency-talkgroups"></i>{_escape(translate(locale, "reports.activeTalkgroups"))}</span>'
+        f'<span><i class="concurrency-sources"></i>{_escape(translate(locale, "reports.activeSources"))}</span>'
+        f'</div>'
+    )
+    return f'{legend}<div class="concurrency-chart">{"".join(columns)}</div>'
+
+
 def _report_page(
     request: Request,
     user: dict[str, Any],
@@ -1375,6 +1440,24 @@ def _report_page(
     report_scope = callsign.strip() if callsign and callsign.strip() else translate(locale, "reports.allCallsigns")
     no_data = translate(locale, "reports.noData")
     summary = report["summary"]
+    hourly_rows = _report_hour_rows(report.get("hourly_activity", []))
+    weekday_rows = _report_weekday_rows(report.get("weekday_activity", []), locale)
+    peak_rows = [
+        {
+            **row,
+            "label": _report_histogram_label(row.get("bucket"), histogram_bucket_seconds(time_range)),
+        }
+        for row in report.get("peak_periods", [])
+    ]
+    traffic_trend = report.get("traffic_trend", {})
+    trend_change = traffic_trend.get("qso_change_percent")
+    trend_change_label = (
+        translate(locale, "reports.noPreviousData")
+        if trend_change is None
+        else f"{trend_change:+.1f}%"
+    )
+    growth_rows = report.get("talkgroup_growth", [])
+    concurrency_rows = report.get("concurrent_activity", [])
     daily_rows = "".join(
         f'<tr><td>{_escape(row["day"])}</td><td>{_escape(row["qso_count"])}</td>'
         f'<td>{_escape(_report_duration(row["duration_seconds"]))}</td></tr>'
@@ -1397,13 +1480,19 @@ def _report_page(
         for row in report["callsigns"]
     ) or f'<tr><td colspan="6" class="muted">{_escape(no_data)}</td></tr>'
     content = f"""
-<style>.report-controls{{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start}}.report-controls label{{display:block;font-size:12px;font-weight:700;color:#6b7280;margin-bottom:5px}}.report-controls select,.report-controls input,.report-controls button{{height:40px;padding:0 10px;border:2px solid #e5e7eb;border-radius:8px;background:#fff;font:inherit}}.report-controls input{{min-width:180px}}.report-controls button{{margin-top:21px;border:0;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font-weight:700;cursor:pointer}}.report-talkgroup-control{{min-width:250px}}.report-talkgroup-list{{display:flex;flex-direction:column;gap:4px;max-height:150px;min-width:250px;overflow-y:auto;padding:7px 9px;border:2px solid #e5e7eb;border-radius:8px;background:#fff}}.report-talkgroup-option{{display:flex!important;align-items:center;gap:7px;margin:0!important;color:#1f2937;font-size:13px!important;font-weight:500!important;white-space:nowrap}}.report-talkgroup-option input{{width:auto;height:auto;margin:0;accent-color:#667eea}}.report-actions{{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}}.report-bar{{display:grid;grid-template-columns:220px 1fr 75px;gap:8px;align-items:center;margin:8px 0;font-size:12px}}.report-bar span{{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}.report-bar div{{height:18px;background:#f0f1f6;border-radius:5px;overflow:hidden}}.report-bar i{{display:block;height:100%;background:linear-gradient(90deg,#667eea,#764ba2);border-radius:5px}}.report-bar strong{{text-align:right;color:#6b7280;white-space:nowrap}}.report-callsign-table th,.report-callsign-table td{{white-space:nowrap}}.histogram{{height:240px;display:flex;align-items:end;gap:3px;padding:18px 4px 28px;border-bottom:1px solid #e5e7eb;overflow:hidden}}.histogram-column{{position:relative;display:flex;flex:1;min-width:8px;height:100%;align-items:end;justify-content:end}}.histogram-column i{{display:block;width:100%;min-height:0;background:linear-gradient(180deg,#764ba2,#667eea);border-radius:4px 4px 0 0}}.histogram-column small{{position:absolute;bottom:-24px;left:50%;transform:translateX(-50%);width:56px;max-width:56px;overflow:hidden;text-overflow:ellipsis;font-size:9px;color:#6b7280;text-align:center;white-space:nowrap}}.histogram-value{{position:absolute;top:-16px;font-size:10px;color:#6b7280}}@media(max-width:700px){{.report-controls{{flex-direction:column}}.report-talkgroup-list{{min-width:0;width:100%}}.report-bar{{grid-template-columns:160px 1fr 55px}}.histogram{{gap:2px}}.histogram-value{{display:none}}}}</style>
+<style>.report-controls{{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start}}.report-controls label{{display:block;font-size:12px;font-weight:700;color:#6b7280;margin-bottom:5px}}.report-controls select,.report-controls input,.report-controls button{{height:40px;padding:0 10px;border:2px solid #e5e7eb;border-radius:8px;background:#fff;font:inherit}}.report-controls input{{min-width:180px}}.report-controls button{{margin-top:21px;border:0;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font-weight:700;cursor:pointer}}.report-talkgroup-control{{min-width:250px}}.report-talkgroup-list{{display:flex;flex-direction:column;gap:4px;max-height:150px;min-width:250px;overflow-y:auto;padding:7px 9px;border:2px solid #e5e7eb;border-radius:8px;background:#fff}}.report-talkgroup-option{{display:flex!important;align-items:center;gap:7px;margin:0!important;color:#1f2937;font-size:13px!important;font-weight:500!important;white-space:nowrap}}.report-talkgroup-option input{{width:auto;height:auto;margin:0;accent-color:#667eea}}.report-actions{{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}}.report-bar{{display:grid;grid-template-columns:220px 1fr 75px;gap:8px;align-items:center;margin:8px 0;font-size:12px}}.report-bar span{{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}.report-bar div{{height:18px;background:#f0f1f6;border-radius:5px;overflow:hidden}}.report-bar i{{display:block;height:100%;background:linear-gradient(90deg,#667eea,#764ba2);border-radius:5px}}.report-bar strong{{text-align:right;color:#6b7280;white-space:nowrap}}.report-callsign-table th,.report-callsign-table td{{white-space:nowrap}}.histogram{{height:240px;display:flex;align-items:end;gap:3px;padding:18px 4px 28px;border-bottom:1px solid #e5e7eb;overflow:hidden}}.histogram-column{{position:relative;display:flex;flex:1;min-width:8px;height:100%;align-items:end;justify-content:end}}.histogram-column i{{display:block;width:100%;min-height:0;background:linear-gradient(180deg,#764ba2,#667eea);border-radius:4px 4px 0 0}}.histogram-column small{{position:absolute;bottom:-24px;left:50%;transform:translateX(-50%);width:56px;max-width:56px;overflow:hidden;text-overflow:ellipsis;font-size:9px;color:#6b7280;text-align:center;white-space:nowrap}}.histogram-value{{position:absolute;top:-16px;font-size:10px;color:#6b7280}}.concurrency-legend{{display:flex;gap:18px;margin:4px 0 8px;font-size:12px;color:#6b7280}}.concurrency-legend span{{display:flex;align-items:center;gap:5px}}.concurrency-legend i{{display:inline-block;width:10px;height:10px;border-radius:2px}}.concurrency-chart{{height:240px;display:flex;align-items:end;gap:3px;padding:18px 4px 28px;border-bottom:1px solid #e5e7eb;overflow:hidden}}.concurrency-column{{position:relative;display:flex;flex:1;min-width:8px;height:100%;align-items:end;justify-content:center;gap:1px}}.concurrency-column i{{display:block;width:calc(50% - 1px);min-height:0;border-radius:4px 4px 0 0}}.concurrency-column small{{position:absolute;bottom:-24px;left:50%;transform:translateX(-50%);width:56px;max-width:56px;overflow:hidden;text-overflow:ellipsis;font-size:9px;color:#6b7280;text-align:center;white-space:nowrap}}.concurrency-talkgroups{{background:#667eea}}.concurrency-sources{{background:#764ba2}}@media(max-width:700px){{.report-controls{{flex-direction:column}}.report-talkgroup-list{{min-width:0;width:100%}}.report-bar{{grid-template-columns:160px 1fr 55px}}.histogram,.concurrency-chart{{gap:2px}}.histogram-value{{display:none}}}}</style>
 <section class="card"><div class="nav"><div><h1 style="margin:0;text-align:left">{_escape(translate(locale, "reports.title"))}</h1><p class="muted">{_escape(translate(locale, "reports.forUser"))}: {_escape(user['callsign'])} · {_escape(translate(locale, "reports.scope"))}: {_escape(report_scope)}</p></div><div><a class="button secondary" href="/user/live-qsos">{_escape(translate(locale, "live.title"))}</a> <form class="inline" method="post" action="/user/logout"><button class="button secondary" type="submit">{_escape(translate(locale, "user.logout"))}</button></form></div></div>
 <form id="reportForm" class="report-controls" method="get" action="/user/reports"><div><label>{_escape(translate(locale, "reports.callsign"))}</label><input name="callsign" value="{_escape(callsign or '')}" placeholder="{_escape(translate(locale, "home.callsignPlaceholder"))}"></div><div><label>{_escape(translate(locale, "reports.timeRange"))}</label><select id="reportTimeRange" name="timeRange">{range_options}</select></div><div><label>{_escape(translate(locale, "home.continent"))}</label><select id="reportContinent" name="continent"><option value="">{_escape(translate(locale, "home.allContinents"))}</option>{continent_options}</select></div><div><label>{_escape(translate(locale, "home.country"))}</label><select id="reportCountry" name="country"><option value="">{_escape(translate(locale, "home.allCountries"))}</option>{country_options}</select></div><div class="report-talkgroup-control"><label>{_escape(translate(locale, "reports.talkgroups"))}</label><div id="reportTalkgroups" class="report-talkgroup-list" role="group" name="talkgroup" multiple>{talkgroup_options}</div></div><button type="submit">{_escape(translate(locale, "reports.generate"))}</button></form>
 <div class="report-actions"><a class="button secondary" href="/user/reports/export.csv?{query}">{_escape(translate(locale, "reports.csv"))}</a><a class="button secondary" href="/user/reports/export.xlsx?{query}">{_escape(translate(locale, "reports.excel"))}</a><a class="button" href="/user/reports/export.pdf?{query}">{_escape(translate(locale, "reports.pdf"))}</a></div></section>
 <section class="card"><h2>{_escape(translate(locale, "reports.summary"))}</h2><div class="stats"><div class="stat"><small>{_escape(translate(locale, "reports.qsos"))}</small><strong>{_escape(summary['qso_count'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "reports.talkTime"))}</small><strong>{_escape(_report_duration(summary['duration_seconds']))}</strong></div><div class="stat"><small>{_escape(translate(locale, "reports.uniqueTalkgroups"))}</small><strong>{_escape(summary['unique_talkgroups'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "reports.activeDays"))}</small><strong>{_escape(summary['active_days'])}</strong></div></div></section>
 <section class="card"><h2>{_escape(translate(locale, "reports.dailyActivity"))}</h2>{_report_histogram(report['histogram'], histogram_bucket_seconds(time_range), locale, no_data)}</section>
+<section class="card"><h2>{_escape(translate(locale, "reports.trafficTrend"))}</h2><div class="stats"><div class="stat"><small>{_escape(translate(locale, "reports.currentPeriod"))}</small><strong>{_escape(traffic_trend.get("current_qso_count", summary["qso_count"]))} { _escape(translate(locale, "reports.qsos")) }</strong></div><div class="stat"><small>{_escape(translate(locale, "reports.previousPeriod"))}</small><strong>{_escape(traffic_trend.get("previous_qso_count", 0))} { _escape(translate(locale, "reports.qsos")) }</strong></div><div class="stat"><small>{_escape(translate(locale, "reports.change"))}</small><strong>{_escape(trend_change_label)}</strong></div></div></section>
+<section class="card"><h2>{_escape(translate(locale, "reports.hourlyActivity"))}</h2>{_report_bar_rows(hourly_rows, 'label', 'qso_count', lambda value: f'{int(value)} {translate(locale, "reports.qsos")}', no_data)}</section>
+<section class="card"><h2>{_escape(translate(locale, "reports.weekdayActivity"))}</h2>{_report_bar_rows(weekday_rows, 'label', 'qso_count', lambda value: f'{int(value)} {translate(locale, "reports.qsos")}', no_data)}</section>
+<section class="card"><h2>{_escape(translate(locale, "reports.peakPeriods"))}</h2>{_report_bar_rows(peak_rows, 'label', 'qso_count', lambda value: f'{int(value)} {translate(locale, "reports.qsos")}', no_data)}</section>
+<section class="card"><h2>{_escape(translate(locale, "reports.concurrentActivity"))}</h2>{_report_concurrency_chart(concurrency_rows, histogram_bucket_seconds(time_range), locale, no_data)}</section>
 <section class="card"><h2>{_escape(translate(locale, "reports.talkgroupActivity"))}</h2>{_report_bar_rows(report['talkgroups'], 'name', 'qso_count', lambda value: f'{int(value)} {translate(locale, "reports.qsos")}', no_data)}<div class="table-wrap"><table><thead><tr><th>{_escape(translate(locale, "home.talkgroup"))}</th><th>{_escape(translate(locale, "user.id"))}</th><th>{_escape(translate(locale, "reports.qsos"))}</th><th>{_escape(translate(locale, "reports.talkTime"))}</th><th>{_escape(translate(locale, "home.lastHeard"))}</th></tr></thead><tbody>{talkgroup_rows}</tbody></table></div></section>
+<section class="card"><h2>{_escape(translate(locale, "reports.talkgroupGrowth"))}</h2><div class="table-wrap"><table><thead><tr><th>{_escape(translate(locale, "home.talkgroup"))}</th><th>{_escape(translate(locale, "reports.currentPeriod"))}</th><th>{_escape(translate(locale, "reports.previousPeriod"))}</th><th>{_escape(translate(locale, "reports.growth"))}</th></tr></thead><tbody>{''.join(f'<tr><td>{_escape(row.get("name"))}</td><td>{_escape(row.get("current_qso_count"))}</td><td>{_escape(row.get("previous_qso_count"))}</td><td>{_escape(translate(locale, "reports.new")) if row.get("growth_percent") is None else _escape(f"{row["growth_percent"]:+.1f}%")}</td></tr>' for row in growth_rows) or f'<tr><td colspan="4" class="muted">{_escape(no_data)}</td></tr>'}</tbody></table></div></section>
 <section class="card"><h2>{_escape(translate(locale, "reports.callsignActivity"))}</h2>{_report_bar_rows(callsign_chart_rows, 'report_label', 'qso_count', lambda value: f'{int(value)} {translate(locale, "reports.qsos")}', no_data)}<div class="table-wrap"><table class="report-callsign-table"><thead><tr><th>{_escape(translate(locale, "home.callsignFilter"))}</th><th>{_escape(translate(locale, "user.name"))}</th><th>{_escape(translate(locale, "home.country"))}</th><th>{_escape(translate(locale, "reports.qsos"))}</th><th>{_escape(translate(locale, "reports.talkTime"))}</th><th>{_escape(translate(locale, "reports.uniqueTalkgroups"))}</th></tr></thead><tbody>{callsign_rows}</tbody></table></div></section>
 <section class="card"><h2>{_escape(translate(locale, "reports.dailyTable"))}</h2><div class="table-wrap"><table><thead><tr><th>{_escape(translate(locale, "reports.date"))}</th><th>{_escape(translate(locale, "reports.qsos"))}</th><th>{_escape(translate(locale, "reports.talkTime"))}</th></tr></thead><tbody>{daily_rows}</tbody></table></div></section>
 <script>const reportCountry=document.getElementById('reportCountry');if(reportCountry){{const options=Array.from(reportCountry.options).slice(1).sort((a,b)=>new Intl.Collator(document.documentElement.lang||'en',{{sensitivity:'base',numeric:true}}).compare(a.textContent,b.textContent));options.forEach(option=>reportCountry.appendChild(option));}}const reportTalkgroups=document.getElementById('reportTalkgroups'),reportTalkgroupValues=document.getElementById('reportTalkgroupValues');const syncReportTalkgroups=()=>{{if(!reportTalkgroupValues)return;const selected=new Set(Array.from(reportTalkgroups.querySelectorAll('input[data-talkgroup-value]:checked')).map(input=>input.dataset.talkgroupValue));Array.from(reportTalkgroupValues.options).forEach(option=>option.selected=selected.has(option.value));}};reportTalkgroups?.addEventListener('change',event=>{{const input=event.target;if(input?.type!=='checkbox')return;const all=reportTalkgroups.querySelector('input[data-all-talkgroups]');const specifics=Array.from(reportTalkgroups.querySelectorAll('input[data-talkgroup-value]'));if(input.dataset.allTalkgroups!==undefined&&input.checked)specifics.forEach(item=>item.checked=false);else if(input.dataset.talkgroupValue!==undefined&&input.checked)all.checked=false;if(!Array.from(reportTalkgroups.querySelectorAll('input[type="checkbox"]')).some(item=>item.checked))all.checked=true;syncReportTalkgroups();}});syncReportTalkgroups();document.getElementById('reportContinent')?.addEventListener('change',()=>document.getElementById('reportForm').submit());document.getElementById('reportCountry')?.addEventListener('change',()=>document.getElementById('reportForm').submit());document.getElementById('reportTimeRange')?.addEventListener('change',()=>document.getElementById('reportForm').submit());</script>

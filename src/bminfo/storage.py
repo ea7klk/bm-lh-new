@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import threading
 from typing import Any, Sequence
@@ -1245,6 +1245,12 @@ class PostgresStore:
             clauses.append("q.destination_id = ANY(%s)")
             params.append(talkgroup_ids)
         where_clause = " AND ".join(clauses)
+        period_end = datetime.now(tz=start_time.tzinfo)
+        period_seconds = max(60, int((period_end - start_time).total_seconds()))
+        previous_start = start_time - timedelta(seconds=period_seconds)
+        common_clauses = clauses[1:]
+        common_where = " AND ".join(common_clauses) or "TRUE"
+        common_params = params[1:]
 
         with self.connection.cursor() as cursor:
             cursor.execute(
@@ -1350,6 +1356,198 @@ class PostgresStore:
                 for row in cursor.fetchall()
             ]
 
+            cursor.execute(
+                f"""
+                WITH hours AS (
+                    SELECT generate_series(0, 23) AS hour
+                ), activity AS (
+                    SELECT EXTRACT(HOUR FROM q.start_at)::int AS hour,
+                           COUNT(*)::bigint AS qso_count
+                    FROM qsos q
+                    LEFT JOIN talkgroups t ON t.talkgroup_id = q.destination_id
+                    WHERE {where_clause}
+                    GROUP BY hour
+                )
+                SELECT hours.hour,
+                       COALESCE(activity.qso_count, 0)::bigint AS qso_count
+                FROM hours
+                LEFT JOIN activity USING (hour)
+                ORDER BY hours.hour
+                """,
+                params,
+            )
+            hourly_activity = [
+                {"hour": row[0], "qso_count": row[1]}
+                for row in cursor.fetchall()
+            ]
+
+            cursor.execute(
+                f"""
+                WITH weekdays AS (
+                    SELECT generate_series(1, 7) AS weekday
+                ), activity AS (
+                    SELECT EXTRACT(ISODOW FROM q.start_at)::int AS weekday,
+                           COUNT(*)::bigint AS qso_count
+                    FROM qsos q
+                    LEFT JOIN talkgroups t ON t.talkgroup_id = q.destination_id
+                    WHERE {where_clause}
+                    GROUP BY weekday
+                )
+                SELECT weekdays.weekday,
+                       COALESCE(activity.qso_count, 0)::bigint AS qso_count
+                FROM weekdays
+                LEFT JOIN activity USING (weekday)
+                ORDER BY weekdays.weekday
+                """,
+                params,
+            )
+            weekday_activity = [
+                {"weekday": row[0], "qso_count": row[1]}
+                for row in cursor.fetchall()
+            ]
+
+            cursor.execute(
+                f"""
+                SELECT COUNT(*) FILTER (
+                           WHERE q.start_at >= %s AND q.start_at < %s
+                       )::bigint AS current_qso_count,
+                       COALESCE(SUM(q.duration_ms) FILTER (
+                           WHERE q.start_at >= %s AND q.start_at < %s
+                       ), 0)::bigint AS current_duration_ms,
+                       COUNT(*) FILTER (
+                           WHERE q.start_at >= %s AND q.start_at < %s
+                       )::bigint AS previous_qso_count,
+                       COALESCE(SUM(q.duration_ms) FILTER (
+                           WHERE q.start_at >= %s AND q.start_at < %s
+                       ), 0)::bigint AS previous_duration_ms
+                FROM qsos q
+                LEFT JOIN talkgroups t ON t.talkgroup_id = q.destination_id
+                WHERE q.start_at >= %s AND q.start_at < %s
+                  AND {common_where}
+                """,
+                [
+                    start_time, period_end,
+                    start_time, period_end,
+                    previous_start, start_time,
+                    previous_start, start_time,
+                    previous_start, period_end,
+                    *common_params,
+                ],
+            )
+            trend_row = cursor.fetchone()
+            current_qso_count, current_duration_ms, previous_qso_count, previous_duration_ms = trend_row
+            traffic_trend = {
+                "current_qso_count": current_qso_count,
+                "current_duration_seconds": current_duration_ms / 1000,
+                "previous_qso_count": previous_qso_count,
+                "previous_duration_seconds": previous_duration_ms / 1000,
+                "qso_change_percent": (
+                    None
+                    if not previous_qso_count
+                    else round((current_qso_count - previous_qso_count) / previous_qso_count * 100, 1)
+                ),
+            }
+
+            cursor.execute(
+                f"""
+                WITH periods AS (
+                    SELECT %s::timestamptz AS current_start,
+                           %s::timestamptz AS current_end,
+                           %s::timestamptz AS previous_start
+                ), aggregated AS (
+                    SELECT q.destination_id AS talkgroup_id,
+                           {NAMED_DESTINATION_SQL} AS name,
+                           COALESCE(t.country, 'XX') AS country,
+                           COALESCE(t.full_country_name, 'Other') AS full_country_name,
+                           COUNT(*) FILTER (
+                               WHERE q.start_at >= periods.current_start
+                                 AND q.start_at < periods.current_end
+                           )::bigint AS current_qso_count,
+                           COUNT(*) FILTER (
+                               WHERE q.start_at >= periods.previous_start
+                                 AND q.start_at < periods.current_start
+                           )::bigint AS previous_qso_count
+                    FROM qsos q
+                    LEFT JOIN talkgroups t ON t.talkgroup_id = q.destination_id
+                    CROSS JOIN periods
+                    WHERE q.start_at >= periods.previous_start
+                      AND q.start_at < periods.current_end
+                      AND {common_where}
+                    GROUP BY q.destination_id, {NAMED_DESTINATION_SQL}, t.country,
+                             t.full_country_name
+                )
+                SELECT talkgroup_id, name, country, full_country_name,
+                       current_qso_count, previous_qso_count,
+                       CASE WHEN previous_qso_count = 0 THEN NULL
+                            ELSE ROUND((current_qso_count - previous_qso_count) * 100.0
+                                       / previous_qso_count, 1)
+                       END AS growth_percent
+                FROM aggregated
+                WHERE current_qso_count > 0
+                ORDER BY (previous_qso_count = 0) DESC,
+                         growth_percent DESC NULLS LAST,
+                         current_qso_count DESC
+                LIMIT 25
+                """,
+                [start_time, period_end, previous_start, *common_params],
+            )
+            talkgroup_growth = [
+                {
+                    "talkgroup_id": row[0],
+                    "name": row[1],
+                    "country": row[2],
+                    "full_country_name": row[3],
+                    "current_qso_count": row[4],
+                    "previous_qso_count": row[5],
+                    "growth_percent": float(row[6]) if row[6] is not None else None,
+                }
+                for row in cursor.fetchall()
+            ]
+
+            bucket_seconds = min(max(int(histogram_bucket_seconds), 60), 7 * 24 * 60 * 60)
+            cursor.execute(
+                f"""
+                WITH settings AS (
+                    SELECT %s::double precision AS stride,
+                           %s::timestamptz AS start_at,
+                           %s::timestamptz AS end_at
+                ), buckets AS (
+                    SELECT generate_series(
+                        date_bin(stride * interval '1 second', start_at,
+                                 TIMESTAMPTZ '1970-01-01'),
+                        date_bin(stride * interval '1 second', end_at,
+                                 TIMESTAMPTZ '1970-01-01'),
+                        stride * interval '1 second'
+                    ) AS bucket
+                    FROM settings
+                ), activity AS (
+                    SELECT date_bin(%s * interval '1 second', q.start_at,
+                                    TIMESTAMPTZ '1970-01-01') AS bucket,
+                           COUNT(DISTINCT q.destination_id)::bigint AS active_talkgroups,
+                           COUNT(DISTINCT q.source_call)::bigint AS active_sources
+                    FROM qsos q
+                    LEFT JOIN talkgroups t ON t.talkgroup_id = q.destination_id
+                    WHERE {where_clause}
+                    GROUP BY bucket
+                )
+                SELECT buckets.bucket,
+                       COALESCE(activity.active_talkgroups, 0)::bigint AS active_talkgroups,
+                       COALESCE(activity.active_sources, 0)::bigint AS active_sources
+                FROM buckets
+                LEFT JOIN activity USING (bucket)
+                ORDER BY buckets.bucket
+                """,
+                [bucket_seconds, start_time, period_end, bucket_seconds, *params],
+            )
+            concurrent_activity = [
+                {
+                    "bucket": row[0],
+                    "active_talkgroups": row[1],
+                    "active_sources": row[2],
+                }
+                for row in cursor.fetchall()
+            ]
+
         histogram = self.activity_histogram(
             start_time,
             histogram_bucket_seconds,
@@ -1358,12 +1556,23 @@ class PostgresStore:
             talkgroup,
             callsign,
         )
+        peak_periods = sorted(
+            (row for row in histogram if int(row.get("qso_count") or 0) > 0),
+            key=lambda row: int(row.get("qso_count") or 0),
+            reverse=True,
+        )[:5]
         return {
             "summary": summary,
             "daily": daily,
             "histogram": histogram,
             "talkgroups": talkgroups,
             "callsigns": callsigns,
+            "hourly_activity": hourly_activity,
+            "weekday_activity": weekday_activity,
+            "peak_periods": peak_periods,
+            "traffic_trend": traffic_trend,
+            "talkgroup_growth": talkgroup_growth,
+            "concurrent_activity": concurrent_activity,
         }
 
     def admin_statistics(self) -> dict[str, Any]:
