@@ -18,6 +18,8 @@ SCHEMA_PATH = Path(__file__).resolve().parent / "migrations" / "001_initial.sql"
 NAMED_DESTINATION_SQL = "COALESCE(NULLIF(BTRIM(t.name), ''), NULLIF(BTRIM(q.destination_name), ''))"
 DISPLAY_EXCLUDED_DESTINATION_ID = 9
 QSO_NOTIFY_CHANNEL = "bminfo_qso_inserted"
+UNUSUALLY_LONG_DURATION_SECONDS = 60 * 60
+MAX_PLAUSIBLE_INGESTION_DELAY_SECONDS = 24 * 60 * 60
 
 
 class _PooledConnection:
@@ -1365,6 +1367,8 @@ class PostgresStore:
         }
 
     def admin_statistics(self) -> dict[str, Any]:
+        from .config import settings
+
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -1395,6 +1399,95 @@ class PostgresStore:
             columns = [column.name for column in cursor.description]
             result.update(dict(zip(columns, row)))
             result["duration_seconds"] = result.pop("duration_ms") / 1000
+
+            cursor.execute(
+                """
+                WITH events AS (
+                    SELECT r.*,
+                           lower(r.event_type) = 'session-stop' AS is_session_stop,
+                           r.stop_at IS NOT NULL
+                               AND r.received_at >= r.stop_at
+                               AND r.stop_at >= r.received_at - (%s * interval '1 second')
+                               AS valid_ingestion_delay
+                    FROM raw_events r
+                )
+                SELECT COUNT(*)::bigint AS raw_events,
+                       COUNT(*) FILTER (
+                           WHERE is_session_stop
+                             AND start_at IS NOT NULL
+                             AND stop_at IS NOT NULL
+                             AND stop_at >= start_at
+                             AND EXTRACT(EPOCH FROM (stop_at - start_at)) < %s
+                       )::bigint AS kerchunks_filtered,
+                       COUNT(*) - COUNT(DISTINCT (session_id, lower(event_type))) AS duplicate_raw_events,
+                       COUNT(*) FILTER (
+                           WHERE is_session_stop
+                             AND (start_at IS NULL OR stop_at IS NULL)
+                       )::bigint AS invalid_session_stops,
+                       COUNT(*) FILTER (
+                           WHERE is_session_stop
+                             AND start_at IS NOT NULL
+                             AND stop_at IS NOT NULL
+                             AND stop_at < start_at
+                       )::bigint AS negative_durations,
+                       COUNT(*) FILTER (
+                           WHERE is_session_stop
+                             AND start_at IS NOT NULL
+                             AND stop_at IS NOT NULL
+                             AND EXTRACT(EPOCH FROM (stop_at - start_at)) > %s
+                       )::bigint AS unusually_long_durations,
+                       MAX(received_at) AS last_event_at,
+                       EXTRACT(EPOCH FROM (now() - MAX(received_at))) AS collector_lag_seconds,
+                       COUNT(*) FILTER (
+                           WHERE is_session_stop
+                             AND stop_at IS NOT NULL
+                             AND NOT valid_ingestion_delay
+                       )::bigint AS invalid_ingestion_delays,
+                       AVG(EXTRACT(EPOCH FROM (received_at - stop_at)))
+                           FILTER (WHERE is_session_stop AND valid_ingestion_delay)
+                           AS average_ingestion_delay_seconds,
+                       percentile_cont(0.95) WITHIN GROUP (
+                           ORDER BY EXTRACT(EPOCH FROM (received_at - stop_at))
+                       ) FILTER (WHERE is_session_stop AND valid_ingestion_delay)
+                           AS p95_ingestion_delay_seconds,
+                       MAX(EXTRACT(EPOCH FROM (received_at - stop_at)))
+                           FILTER (WHERE is_session_stop AND valid_ingestion_delay)
+                           AS max_ingestion_delay_seconds,
+                       COUNT(*) FILTER (
+                           WHERE is_session_stop AND stop_at IS NOT NULL AND received_at < stop_at
+                       )::bigint AS negative_ingestion_delays,
+                       (
+                           SELECT MAX(last_seen_at)
+                           FROM service_heartbeats
+                           WHERE service_name = 'collector'
+                       ) AS collector_heartbeat_at,
+                       EXTRACT(EPOCH FROM (
+                           now() - (
+                               SELECT MAX(last_seen_at)
+                               FROM service_heartbeats
+                               WHERE service_name = 'collector'
+                           )
+                       )) AS collector_heartbeat_lag_seconds,
+                       (SELECT COUNT(*)::bigint FROM qsos) AS stored_qsos
+                FROM events
+                """,
+                (
+                    float(MAX_PLAUSIBLE_INGESTION_DELAY_SECONDS),
+                    float(settings.kerchunk_threshold_seconds),
+                    float(UNUSUALLY_LONG_DURATION_SECONDS),
+                ),
+            )
+            quality_row = cursor.fetchone()
+            quality_columns = [column.name for column in cursor.description]
+            quality = dict(zip(quality_columns, quality_row))
+            raw_events = int(quality["raw_events"] or 0)
+            stored_qsos = int(quality["stored_qsos"] or 0)
+            quality["raw_events"] = raw_events
+            quality["stored_qsos"] = stored_qsos
+            quality["displayable_qso_percentage"] = (
+                round(stored_qsos * 100 / raw_events, 2) if raw_events else 0.0
+            )
+            result["data_quality"] = quality
             return result
 
     def status_snapshot(self, collector_stale_after_seconds: int) -> dict[str, Any]:
@@ -1559,11 +1652,55 @@ class PostgresStore:
                 """
                 SELECT
                     (SELECT COUNT(*)::bigint FROM raw_events),
-                    (SELECT COUNT(*)::bigint FROM qsos)
+                    (SELECT COUNT(*)::bigint FROM qsos),
+                    (SELECT COUNT(*)::bigint
+                       FROM raw_events
+                      WHERE lower(event_type) <> 'session-stop')
                 """
             )
-            raw_events, qsos = cursor.fetchone()
-        return {"raw_events": int(raw_events), "qsos": int(qsos)}
+            raw_events, qsos, irrelevant_raw_events = cursor.fetchone()
+        return {
+            "raw_events": int(raw_events),
+            "qsos": int(qsos),
+            "irrelevant_raw_events": int(irrelevant_raw_events),
+        }
+
+    def clear_irrelevant_raw_events(self) -> dict[str, int]:
+        """Delete non-session-stop raw packets and compact the raw table.
+
+        Displayable QSOs are built from session-stop packets. Any historical
+        non-session-stop row referenced by a QSO is retained defensively so
+        the foreign-key relationship remains intact.
+        """
+        with self.connection.transaction():
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT COUNT(*)::bigint
+                    FROM raw_events
+                    WHERE lower(event_type) <> 'session-stop'
+                    """
+                )
+                candidates = int(cursor.fetchone()[0])
+                cursor.execute(
+                    """
+                    DELETE FROM raw_events r
+                    WHERE lower(r.event_type) <> 'session-stop'
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM qsos q
+                          WHERE q.raw_event_id = r.id
+                      )
+                    """
+                )
+                deleted = int(cursor.rowcount)
+
+        self._compact_tables("raw_events")
+        return {
+            "raw_events_candidates": candidates,
+            "raw_events_deleted": deleted,
+            "raw_events_retained": max(0, candidates - deleted),
+        }
 
     def rebuild_qsos_from_raw_events(self, kerchunk_threshold_seconds: float) -> dict[str, int]:
         """Rebuild displayable QSOs from raw events in one set-based SQL operation."""

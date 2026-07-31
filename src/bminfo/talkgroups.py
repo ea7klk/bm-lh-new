@@ -4,7 +4,7 @@ import json
 import logging
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping
 
 logger = logging.getLogger(__name__)
@@ -144,11 +144,31 @@ def fetch_talkgroups(url: str = "https://api.brandmeister.network/v2/talkgroup")
     return list(records.values())
 
 
-def sync_talkgroups(dsn: str, url: str = "https://api.brandmeister.network/v2/talkgroup") -> int:
-    import psycopg
+def sync_talkgroups(store: Any, url: str = "https://api.brandmeister.network/v2/talkgroup") -> int:
+    """Refresh talkgroup metadata through the collector's pooled store."""
+    connection = store.connection
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT last_seen_at
+            FROM service_heartbeats
+            WHERE service_name = 'talkgroups'
+            """
+        )
+        last_sync = cursor.fetchone()
+    if last_sync and last_sync[0] is not None:
+        elapsed = datetime.now(tz=UTC) - last_sync[0]
+        if elapsed < timedelta(hours=24):
+            logger.info(
+                "talkgroup metadata is fresh; skipping update (last update %.1f hours ago)",
+                elapsed.total_seconds() / 3600,
+            )
+            return 0
 
+    # Do not hold a pooled database connection while waiting for the remote
+    # metadata API. The short write transaction below returns it promptly.
     records = fetch_talkgroups(url)
-    with psycopg.connect(dsn) as connection:
+    with connection.transaction():
         with connection.cursor() as cursor:
             for record in records:
                 cursor.execute(
@@ -166,5 +186,13 @@ def sync_talkgroups(dsn: str, url: str = "https://api.brandmeister.network/v2/ta
                     (record.talkgroup_id, record.name, record.country, record.continent,
                      record.full_country_name, record.last_updated),
                 )
+            cursor.execute(
+                """
+                INSERT INTO service_heartbeats (service_name, last_seen_at)
+                VALUES ('talkgroups', now())
+                ON CONFLICT (service_name) DO UPDATE SET
+                    last_seen_at = EXCLUDED.last_seen_at
+                """
+            )
     logger.info("synchronized %d BrandMeister talkgroups", len(records))
     return len(records)

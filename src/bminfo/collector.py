@@ -27,11 +27,13 @@ def _log_stored_qso_progress(stored_qso_count: int) -> None:
         logger.info("stored %d QSOs (progress block of %d)", stored_qso_count, STORED_QSO_LOG_BLOCK)
 
 
-def _talkgroup_sync_loop(stop_event: threading.Event) -> None:
-    interval_seconds = max(settings.talkgroups_sync_hours, 1) * 60 * 60
+def _talkgroup_sync_loop(store: PostgresStore, stop_event: threading.Event) -> None:
+    # The sync function also checks the persisted last-update marker. Keeping
+    # this loop at or above 24 hours avoids needless wakeups and API calls.
+    interval_seconds = max(settings.talkgroups_sync_hours, 24) * 60 * 60
     while not stop_event.is_set():
         try:
-            sync_talkgroups(settings.database_url, settings.talkgroups_url)
+            sync_talkgroups(store, settings.talkgroups_url)
         except Exception:
             logger.exception("talkgroup metadata synchronization failed")
         stop_event.wait(interval_seconds)
@@ -57,7 +59,7 @@ def run() -> None:
     stop_event = threading.Event()
     talkgroup_thread = threading.Thread(
         target=_talkgroup_sync_loop,
-        args=(stop_event,),
+        args=(store, stop_event),
         name="talkgroup-sync",
         daemon=True,
     )
@@ -69,6 +71,8 @@ def run() -> None:
     )
     talkgroup_thread.start()
     heartbeat_thread.start()
+    # The talkgroup sync runs in its own thread. The stream connection starts
+    # immediately below and therefore does not wait for the metadata API.
     sio = socketio.Client(
         reconnection=True,
         reconnection_attempts=0,
@@ -94,6 +98,13 @@ def run() -> None:
         if event is None:
             logger.warning("ignored malformed mqtt payload")
             return
+        # Session-stop contains all fields needed to build a completed QSO.
+        # Session-start/update and other administrative packets are not used
+        # by the sessionizer, so do not persist them in the raw-event audit
+        # table. The explicit admin cleanup handles historical rows.
+        if event.event_type.casefold() != "session-stop":
+            logger.debug("ignored non-QSO event %s (%s)", event.session_id, event.event_type)
+            return
         qso = make_qso(
             event,
             settings.kerchunk_threshold_seconds,
@@ -114,10 +125,8 @@ def run() -> None:
             _log_stored_qso_progress(stored_qso_count)
         elif qso is not None:
             logger.debug("filtered non-displayable QSO %s", qso.session_id)
-        elif event.event_type.casefold() == "session-stop":
-            logger.debug("filtered kerchunk/invalid session %s", event.session_id)
         else:
-            logger.debug("stored non-stop event %s (%s)", event.session_id, event.event_type)
+            logger.debug("filtered kerchunk/invalid session %s", event.session_id)
 
     while True:
         try:

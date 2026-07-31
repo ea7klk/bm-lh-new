@@ -34,6 +34,7 @@ from .auth import (
 )
 from .admin_routes import (
     admin_clear_qsos,
+    admin_clear_irrelevant_raw_events,
     admin_clear_raw_events,
     admin_postgres,
     admin_postgres_analyze,
@@ -305,8 +306,8 @@ def dashboard(request: Request = None) -> HTMLResponse:
     )
     talkgroup_filter = (
         '<div class="control talkgroup-filter" id="talkgroupControl" style="display:none">'
-        '<label for="talkgroups" data-i18n="home.talkgroupFilter">Talkgroups</label>'
-        '<select id="talkgroups" multiple size="5" aria-describedby="talkgroupFilterHint"></select>'
+        '<label data-i18n="home.talkgroupFilter">Talkgroups</label>'
+        '<div id="talkgroups" class="talkgroup-checkboxes" role="group" aria-describedby="talkgroupFilterHint"></div>'
         '<small id="talkgroupFilterHint" data-i18n="home.talkgroupFilterHint">Select one or more active talkgroups</small></div>'
         if user is not None
         else ""
@@ -402,6 +403,14 @@ def _format_datetime(value: Any) -> str:
     return "—" if value is None else str(value).replace("+00:00", " UTC")
 
 
+def _admin_datetime(value: Any) -> str:
+    if value is None:
+        return "—"
+    if isinstance(value, datetime):
+        return value.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+    return str(value).replace("+00:00", " UTC")
+
+
 def _subpage_account_links(locale: str, user: dict[str, Any] | None = None) -> str:
     if user is None:
         return (
@@ -462,7 +471,7 @@ h1,h2{{margin-top:0}}h1{{text-align:center}}.muted{{color:#6b7280}}.nav{{display
 .nav a,.button{{display:inline-block;padding:9px 14px;border-radius:8px;border:0;background:linear-gradient(135deg,#667eea,#764ba2);color:white;text-decoration:none;font-weight:700;cursor:pointer}}
 .nav a.secondary,.button.secondary{{background:#f1f3ff;color:#5457bd}}.language{{display:flex;align-items:center;gap:7px;color:#fff;font-size:13px;font-weight:700}}.language select{{padding:7px 9px;border:0;border-radius:7px;background:#fff;color:#374151;font:inherit}}.form{{max-width:520px;margin:auto}}label{{display:block;margin:13px 0 5px;font-size:13px;font-weight:700;color:#4b5563}}input{{width:100%;height:42px;padding:0 11px;border:2px solid #e5e7eb;border-radius:8px;box-sizing:border-box;font:inherit}}input:focus{{outline:0;border-color:#667eea}}.form .button{{margin-top:18px;width:100%}}
 .error{{padding:12px;border-radius:8px;background:#fff1f2;color:#be123c;margin:0 0 15px}}.success{{padding:12px;border-radius:8px;background:#ecfdf3;color:#15803d;margin:0 0 15px}}
-.stats{{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}}.stat{{background:#f8f9ff;border-radius:10px;padding:16px}}.stat small{{color:#6b7280;text-transform:uppercase;font-weight:800;letter-spacing:.05em}}.stat strong{{display:block;font-size:25px;margin-top:7px}}
+.stats{{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}}.stat{{background:#f8f9ff;border-radius:10px;padding:16px}}.stat small{{color:#6b7280;text-transform:uppercase;font-weight:800;letter-spacing:.05em}}.stat strong{{display:block;font-size:25px;margin-top:7px}}.data-quality-stats .stat{{text-align:center}}.data-quality-stats .stat strong{{font-size:clamp(14px,1.5vw,25px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 .charts{{display:grid;grid-template-columns:1fr 1fr;gap:20px}}.charts h3{{margin:0 0 10px;font-size:15px}}
 table{{width:100%;border-collapse:collapse}}th,td{{padding:11px;border-bottom:1px solid #e8eaf0;text-align:left;font-size:13px}}th{{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}}.table-wrap{{overflow:auto;border:1px solid #e8eaf0;border-radius:9px}}.inline{{display:inline}}.danger{{background:#dc3545}}.warning{{color:#b45309;font-weight:700}}
 .cookie-consent{{position:fixed;z-index:1000;left:16px;right:16px;bottom:16px;display:flex;justify-content:center}}.cookie-consent[hidden]{{display:none}}.cookie-consent-card{{max-width:760px;width:100%;padding:20px 22px;background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 18px 55px #1e153a55}}.cookie-consent-card h2,.cookie-consent-card h3{{margin:0 0 8px}}.cookie-consent-card p{{margin:0;color:#4b5563;line-height:1.5;font-size:14px}}.cookie-consent-actions{{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:15px}}.cookie-consent-actions .button{{width:auto;margin:0}}.cookie-settings-link,.cookie-settings-footer{{border:0;background:none;color:#5457bd;text-decoration:underline;cursor:pointer;font:inherit;font-size:13px}}.cookie-settings{{margin-top:15px;padding-top:15px;border-top:1px solid #e5e7eb}}.cookie-option{{display:flex;align-items:flex-start;gap:9px;margin:11px 0;font-weight:400}}.cookie-option input{{width:auto;height:auto;margin-top:3px}}.cookie-option span{{display:flex;flex-direction:column;gap:3px}}.cookie-option small{{color:#6b7280;font-weight:400;line-height:1.4}}.cookie-settings-footer{{display:block;margin:24px auto 0;color:#fff}}.page-footer{{color:#fff;text-align:center;font-size:12px;line-height:1.6;padding:4px 0 8px}}.page-footer a{{color:#fff}}
@@ -1042,10 +1051,14 @@ def user_live_qsos(
         for value in continents
     )
     country_labels = catalog(locale).get("metadata", {}).get("countries", {})
+    live_countries = sorted(
+        get_store().countries(selected_continent),
+        key=lambda row: str(country_labels.get(row["value"], row["label"])).casefold(),
+    )
     country_options = "".join(
         f'<option value="{_escape(row["value"])}"{" selected" if row["value"] == selected_country else ""}>'
         f'{_escape(country_labels.get(row["value"], row["label"]))}</option>'
-        for row in get_store().countries(selected_continent)
+        for row in live_countries
     )
     talkgroup_options = "".join(
         f'<option value="{_escape(row["value"])}"'
@@ -1116,7 +1129,7 @@ function setLiveMode(text){{liveMode.innerHTML=`<strong>${{liveEscape(text)}}</s
 function sendSubscription(){{if(liveSocket?.readyState===WebSocket.OPEN)liveSocket.send(JSON.stringify(subscription()));}}
 function handleLiveMessage(message){{if(message.type==='snapshot'){{liveEntries.clear();(message.rows||[]).forEach(row=>liveEntries.set(row.sessionId,row));renderLive();}}else if(message.type==='qso'&&message.qso){{liveEntries.set(message.qso.sessionId,message.qso);renderLive();}}liveUpdated.textContent=`${{liveTexts.updated}} ${{new Date().toLocaleTimeString(liveLocale)}}`;}}
 function connectLive(){{if(liveSocket&&liveSocket.readyState<=WebSocket.OPEN)return;setLiveMode(liveTexts.connecting);const protocol=location.protocol==='https:'?'wss':'ws';liveSocket=new WebSocket(`${{protocol}}://${{location.host}}/user/live-qsos/ws`);liveSocket.addEventListener('open',()=>{{setLiveMode(liveTexts.connected);sendSubscription();}});liveSocket.addEventListener('message',event=>{{try{{handleLiveMessage(JSON.parse(event.data));}}catch(_){{}}}});liveSocket.addEventListener('error',()=>setLiveMode(liveTexts.disconnected));liveSocket.addEventListener('close',event=>{{if(event.code===4401){{window.location='/user/login';return;}}setLiveMode(liveTexts.reconnecting);clearTimeout(liveReconnectTimer);liveReconnectTimer=setTimeout(connectLive,2000);}});}}
-async function loadCountries(){{const continent=document.getElementById('liveContinent').value;const country=document.getElementById('liveCountry');const countryControl=document.getElementById('liveCountryControl');if(!continent){{countryControl.style.display='none';country.innerHTML=`<option value="">${{liveEscape(liveTexts.allCountries||'All countries')}}</option>`;document.getElementById('liveTalkgroupControl').style.display='none';document.getElementById('liveTalkgroups').innerHTML='';sendSubscription();return;}}const previous=country.value;const response=await fetch('/public/countries?continent='+encodeURIComponent(continent),{{cache:'no-store'}});const countries=await response.json();country.innerHTML=`<option value="">${{liveEscape(liveTexts.allCountries||'All countries')}}</option>`+countries.map(item=>`<option value="${{liveEscape(item.value)}}">${{liveEscape(liveTexts.countries[item.value]||item.label)}}</option>`).join('');countryControl.style.display=countries.length?'block':'none';if(countries.some(item=>item.value===previous))country.value=previous;await loadTalkgroups();sendSubscription();}}
+async function loadCountries(){{const continent=document.getElementById('liveContinent').value;const country=document.getElementById('liveCountry');const countryControl=document.getElementById('liveCountryControl');if(!continent){{countryControl.style.display='none';country.innerHTML=`<option value="">${{liveEscape(liveTexts.allCountries||'All countries')}}</option>`;document.getElementById('liveTalkgroupControl').style.display='none';document.getElementById('liveTalkgroups').innerHTML='';sendSubscription();return;}}const previous=country.value;const response=await fetch('/public/countries?continent='+encodeURIComponent(continent),{{cache:'no-store'}});const countries=await response.json();countries.sort((a,b)=>new Intl.Collator(liveLocale,{{sensitivity:'base',numeric:true}}).compare(liveTexts.countries[a.value]||a.label,liveTexts.countries[b.value]||b.label));country.innerHTML=`<option value="">${{liveEscape(liveTexts.allCountries||'All countries')}}</option>`+countries.map(item=>`<option value="${{liveEscape(item.value)}}">${{liveEscape(liveTexts.countries[item.value]||item.label)}}</option>`).join('');countryControl.style.display=countries.length?'block':'none';if(countries.some(item=>item.value===previous))country.value=previous;await loadTalkgroups();sendSubscription();}}
 async function loadTalkgroups(){{const continent=document.getElementById('liveContinent').value,country=document.getElementById('liveCountry').value,control=document.getElementById('liveTalkgroupControl'),select=document.getElementById('liveTalkgroups');if(!continent||!country){{control.style.display='none';select.innerHTML='';return;}}const wanted=new Set(selectedTalkgroups().map(String));const params=new URLSearchParams({{timeRange:liveTimeRange,continent,country}});const response=await fetch('/user/talkgroups?'+params,{{cache:'no-store'}});if(!response.ok){{control.style.display='none';return;}}const groups=await response.json();select.innerHTML=groups.map(item=>`<option value="${{liveEscape(item.value)}}"${{wanted.has(String(item.value))?' selected':''}}>${{liveEscape(item.label)}} (${{liveEscape(item.count)}})</option>`).join('');control.style.display=groups.length?'block':'none';}}
 document.getElementById('liveContinent').addEventListener('change',()=>loadCountries().catch(()=>setLiveMode(liveTexts.disconnected)));document.getElementById('liveCountry').addEventListener('change',()=>loadTalkgroups().then(sendSubscription).catch(()=>setLiveMode(liveTexts.disconnected)));document.getElementById('liveTalkgroups').addEventListener('change',sendSubscription);liveRowsSelect.addEventListener('change',()=>{{renderLive();sendSubscription();}});document.getElementById('liveCallsign').addEventListener('input',()=>{{clearTimeout(liveCallsignTimer);liveCallsignTimer=setTimeout(sendSubscription,300);}});liveForm.addEventListener('submit',event=>event.preventDefault());setInterval(renderLive,5000);renderLive();connectLive();
 </script>
@@ -1163,6 +1176,19 @@ def _report_duration(seconds: float | int) -> str:
     if minutes:
         return f"{minutes}:{seconds:02d}"
     return f"{seconds} s"
+
+
+def _admin_seconds(value: Any) -> str:
+    if value is None:
+        return "—"
+    return f"{float(value):.1f} s"
+
+
+def _admin_hms(value: Any) -> str:
+    total_seconds = max(0, round(float(value or 0)))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours}:{minutes:02d}:{seconds:02d}"
 
 
 def _report_histogram_label(value: Any, bucket_seconds: int) -> str:
@@ -1253,7 +1279,8 @@ def _report_page(
 ) -> HTMLResponse:
     locale = request_locale(request)
     query_started = perf_counter()
-    report = get_store().user_report(
+    store = get_store()
+    report = store.user_report(
         callsign,
         start_time(time_range),
         continent,
@@ -1261,12 +1288,28 @@ def _report_page(
         talkgroups,
         histogram_bucket_seconds(time_range),
     )
+    if hasattr(store, "active_talkgroups"):
+        talkgroup_selector_rows = [
+            {
+                "talkgroup_id": row["value"],
+                "name": row["label"],
+                "qso_count": row["count"],
+            }
+            for row in store.active_talkgroups(
+                start_time(time_range), continent, country
+            )
+        ]
+    else:
+        talkgroup_selector_rows = list(report.get("talkgroups", []))
     report = _limit_report_entries(report)
     translations = catalog(locale)
     metadata = translations.get("metadata", {})
     country_labels = metadata.get("countries", {})
     continents = get_store().continents()
-    countries = get_store().countries(continent)
+    countries = sorted(
+        get_store().countries(continent),
+        key=lambda row: str(country_labels.get(row["value"], row["label"])).casefold(),
+    )
     query_seconds = perf_counter() - query_started
     selected_talkgroups = {str(value) for value in talkgroups or []}
     range_keys = {
@@ -1295,11 +1338,38 @@ def _report_page(
         report["talkgroups"],
         key=lambda row: (-int(row.get("qso_count") or 0), str(row.get("name") or ""), int(row.get("talkgroup_id") or 0)),
     )
-    talkgroup_options = "".join(
-        f'<option value="{_escape(row["talkgroup_id"])}"'
-        f'{" selected" if str(row["talkgroup_id"]) in selected_talkgroups else ""}>'
-        f'{_escape(row["name"])} ({_escape(row["qso_count"])} QSOs)</option>'
-        for row in report["talkgroups"]
+    talkgroup_selector_rows.sort(
+        key=lambda row: (
+            -int(row.get("qso_count") or 0),
+            str(row.get("name") or "").casefold(),
+            int(row.get("talkgroup_id") or 0),
+        )
+    )
+    selected_specific = any(
+        str(row.get("talkgroup_id")) in selected_talkgroups
+        for row in talkgroup_selector_rows
+    )
+    all_talkgroups_selected = not selected_specific
+    talkgroup_options = (
+        f'<label class="report-talkgroup-option"><input type="checkbox" '
+        f'data-all-talkgroups value="all"{" checked" if all_talkgroups_selected else ""}>'
+        f'<span>{_escape(translate(locale, "home.allTalkgroups"))}</span></label>'
+        + "".join(
+            f'<label class="report-talkgroup-option"><input type="checkbox" '
+            f'data-talkgroup-value="{_escape(row["talkgroup_id"])}" '
+            f'{" checked" if not all_talkgroups_selected and str(row["talkgroup_id"]) in selected_talkgroups else ""}>'
+            f'<span>{_escape(row.get("name"))} ({_escape(row.get("qso_count"))} '
+            f'{_escape(translate(locale, "reports.qsos"))})</span></label>'
+            for row in talkgroup_selector_rows
+        )
+        + '<select id="reportTalkgroupValues" name="talkgroup" multiple hidden>'
+        + "".join(
+            f'<option value="{_escape(row["talkgroup_id"])}"'
+            f'{" selected" if not all_talkgroups_selected and str(row["talkgroup_id"]) in selected_talkgroups else ""}>'
+            f'{_escape(row.get("name"))}</option>'
+            for row in talkgroup_selector_rows
+        )
+        + '</select>'
     )
     query = _report_query(time_range, continent, country, talkgroups, callsign)
     report_scope = callsign.strip() if callsign and callsign.strip() else translate(locale, "reports.allCallsigns")
@@ -1327,16 +1397,16 @@ def _report_page(
         for row in report["callsigns"]
     ) or f'<tr><td colspan="6" class="muted">{_escape(no_data)}</td></tr>'
     content = f"""
-<style>.report-controls{{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start}}.report-controls label{{display:block;font-size:12px;font-weight:700;color:#6b7280;margin-bottom:5px}}.report-controls select,.report-controls input,.report-controls button{{height:40px;padding:0 10px;border:2px solid #e5e7eb;border-radius:8px;background:#fff;font:inherit}}.report-controls input{{min-width:180px}}.report-controls select[multiple]{{height:100px;min-width:220px}}.report-controls button{{margin-top:21px;border:0;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font-weight:700;cursor:pointer}}.report-actions{{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}}.report-bar{{display:grid;grid-template-columns:220px 1fr 75px;gap:8px;align-items:center;margin:8px 0;font-size:12px}}.report-bar span{{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}.report-bar div{{height:18px;background:#f0f1f6;border-radius:5px;overflow:hidden}}.report-bar i{{display:block;height:100%;background:linear-gradient(90deg,#667eea,#764ba2);border-radius:5px}}.report-bar strong{{text-align:right;color:#6b7280;white-space:nowrap}}.report-callsign-table th,.report-callsign-table td{{white-space:nowrap}}.histogram{{height:240px;display:flex;align-items:end;gap:3px;padding:18px 4px 28px;border-bottom:1px solid #e5e7eb;overflow:hidden}}.histogram-column{{position:relative;display:flex;flex:1;min-width:8px;height:100%;align-items:end;justify-content:end}}.histogram-column i{{display:block;width:100%;min-height:0;background:linear-gradient(180deg,#764ba2,#667eea);border-radius:4px 4px 0 0}}.histogram-column small{{position:absolute;bottom:-24px;left:50%;transform:translateX(-50%);width:56px;max-width:56px;overflow:hidden;text-overflow:ellipsis;font-size:9px;color:#6b7280;text-align:center;white-space:nowrap}}.histogram-value{{position:absolute;top:-16px;font-size:10px;color:#6b7280}}@media(max-width:700px){{.report-bar{{grid-template-columns:160px 1fr 55px}}.histogram{{gap:2px}}.histogram-value{{display:none}}}}</style>
+<style>.report-controls{{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start}}.report-controls label{{display:block;font-size:12px;font-weight:700;color:#6b7280;margin-bottom:5px}}.report-controls select,.report-controls input,.report-controls button{{height:40px;padding:0 10px;border:2px solid #e5e7eb;border-radius:8px;background:#fff;font:inherit}}.report-controls input{{min-width:180px}}.report-controls button{{margin-top:21px;border:0;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font-weight:700;cursor:pointer}}.report-talkgroup-control{{min-width:250px}}.report-talkgroup-list{{display:flex;flex-direction:column;gap:4px;max-height:150px;min-width:250px;overflow-y:auto;padding:7px 9px;border:2px solid #e5e7eb;border-radius:8px;background:#fff}}.report-talkgroup-option{{display:flex!important;align-items:center;gap:7px;margin:0!important;color:#1f2937;font-size:13px!important;font-weight:500!important;white-space:nowrap}}.report-talkgroup-option input{{width:auto;height:auto;margin:0;accent-color:#667eea}}.report-actions{{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}}.report-bar{{display:grid;grid-template-columns:220px 1fr 75px;gap:8px;align-items:center;margin:8px 0;font-size:12px}}.report-bar span{{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}.report-bar div{{height:18px;background:#f0f1f6;border-radius:5px;overflow:hidden}}.report-bar i{{display:block;height:100%;background:linear-gradient(90deg,#667eea,#764ba2);border-radius:5px}}.report-bar strong{{text-align:right;color:#6b7280;white-space:nowrap}}.report-callsign-table th,.report-callsign-table td{{white-space:nowrap}}.histogram{{height:240px;display:flex;align-items:end;gap:3px;padding:18px 4px 28px;border-bottom:1px solid #e5e7eb;overflow:hidden}}.histogram-column{{position:relative;display:flex;flex:1;min-width:8px;height:100%;align-items:end;justify-content:end}}.histogram-column i{{display:block;width:100%;min-height:0;background:linear-gradient(180deg,#764ba2,#667eea);border-radius:4px 4px 0 0}}.histogram-column small{{position:absolute;bottom:-24px;left:50%;transform:translateX(-50%);width:56px;max-width:56px;overflow:hidden;text-overflow:ellipsis;font-size:9px;color:#6b7280;text-align:center;white-space:nowrap}}.histogram-value{{position:absolute;top:-16px;font-size:10px;color:#6b7280}}@media(max-width:700px){{.report-controls{{flex-direction:column}}.report-talkgroup-list{{min-width:0;width:100%}}.report-bar{{grid-template-columns:160px 1fr 55px}}.histogram{{gap:2px}}.histogram-value{{display:none}}}}</style>
 <section class="card"><div class="nav"><div><h1 style="margin:0;text-align:left">{_escape(translate(locale, "reports.title"))}</h1><p class="muted">{_escape(translate(locale, "reports.forUser"))}: {_escape(user['callsign'])} · {_escape(translate(locale, "reports.scope"))}: {_escape(report_scope)}</p></div><div><a class="button secondary" href="/user/live-qsos">{_escape(translate(locale, "live.title"))}</a> <form class="inline" method="post" action="/user/logout"><button class="button secondary" type="submit">{_escape(translate(locale, "user.logout"))}</button></form></div></div>
-<form id="reportForm" class="report-controls" method="get" action="/user/reports"><div><label>{_escape(translate(locale, "reports.callsign"))}</label><input name="callsign" value="{_escape(callsign or '')}" placeholder="{_escape(translate(locale, "home.callsignPlaceholder"))}"></div><div><label>{_escape(translate(locale, "reports.timeRange"))}</label><select id="reportTimeRange" name="timeRange">{range_options}</select></div><div><label>{_escape(translate(locale, "home.continent"))}</label><select id="reportContinent" name="continent"><option value="">{_escape(translate(locale, "home.allContinents"))}</option>{continent_options}</select></div><div><label>{_escape(translate(locale, "home.country"))}</label><select id="reportCountry" name="country"><option value="">{_escape(translate(locale, "home.allCountries"))}</option>{country_options}</select></div><div><label>{_escape(translate(locale, "reports.talkgroups"))}</label><select id="reportTalkgroups" name="talkgroup" multiple>{talkgroup_options}</select></div><button type="submit">{_escape(translate(locale, "reports.generate"))}</button></form>
+<form id="reportForm" class="report-controls" method="get" action="/user/reports"><div><label>{_escape(translate(locale, "reports.callsign"))}</label><input name="callsign" value="{_escape(callsign or '')}" placeholder="{_escape(translate(locale, "home.callsignPlaceholder"))}"></div><div><label>{_escape(translate(locale, "reports.timeRange"))}</label><select id="reportTimeRange" name="timeRange">{range_options}</select></div><div><label>{_escape(translate(locale, "home.continent"))}</label><select id="reportContinent" name="continent"><option value="">{_escape(translate(locale, "home.allContinents"))}</option>{continent_options}</select></div><div><label>{_escape(translate(locale, "home.country"))}</label><select id="reportCountry" name="country"><option value="">{_escape(translate(locale, "home.allCountries"))}</option>{country_options}</select></div><div class="report-talkgroup-control"><label>{_escape(translate(locale, "reports.talkgroups"))}</label><div id="reportTalkgroups" class="report-talkgroup-list" role="group" name="talkgroup" multiple>{talkgroup_options}</div></div><button type="submit">{_escape(translate(locale, "reports.generate"))}</button></form>
 <div class="report-actions"><a class="button secondary" href="/user/reports/export.csv?{query}">{_escape(translate(locale, "reports.csv"))}</a><a class="button secondary" href="/user/reports/export.xlsx?{query}">{_escape(translate(locale, "reports.excel"))}</a><a class="button" href="/user/reports/export.pdf?{query}">{_escape(translate(locale, "reports.pdf"))}</a></div></section>
 <section class="card"><h2>{_escape(translate(locale, "reports.summary"))}</h2><div class="stats"><div class="stat"><small>{_escape(translate(locale, "reports.qsos"))}</small><strong>{_escape(summary['qso_count'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "reports.talkTime"))}</small><strong>{_escape(_report_duration(summary['duration_seconds']))}</strong></div><div class="stat"><small>{_escape(translate(locale, "reports.uniqueTalkgroups"))}</small><strong>{_escape(summary['unique_talkgroups'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "reports.activeDays"))}</small><strong>{_escape(summary['active_days'])}</strong></div></div></section>
 <section class="card"><h2>{_escape(translate(locale, "reports.dailyActivity"))}</h2>{_report_histogram(report['histogram'], histogram_bucket_seconds(time_range), locale, no_data)}</section>
 <section class="card"><h2>{_escape(translate(locale, "reports.talkgroupActivity"))}</h2>{_report_bar_rows(report['talkgroups'], 'name', 'qso_count', lambda value: f'{int(value)} {translate(locale, "reports.qsos")}', no_data)}<div class="table-wrap"><table><thead><tr><th>{_escape(translate(locale, "home.talkgroup"))}</th><th>{_escape(translate(locale, "user.id"))}</th><th>{_escape(translate(locale, "reports.qsos"))}</th><th>{_escape(translate(locale, "reports.talkTime"))}</th><th>{_escape(translate(locale, "home.lastHeard"))}</th></tr></thead><tbody>{talkgroup_rows}</tbody></table></div></section>
 <section class="card"><h2>{_escape(translate(locale, "reports.callsignActivity"))}</h2>{_report_bar_rows(callsign_chart_rows, 'report_label', 'qso_count', lambda value: f'{int(value)} {translate(locale, "reports.qsos")}', no_data)}<div class="table-wrap"><table class="report-callsign-table"><thead><tr><th>{_escape(translate(locale, "home.callsignFilter"))}</th><th>{_escape(translate(locale, "user.name"))}</th><th>{_escape(translate(locale, "home.country"))}</th><th>{_escape(translate(locale, "reports.qsos"))}</th><th>{_escape(translate(locale, "reports.talkTime"))}</th><th>{_escape(translate(locale, "reports.uniqueTalkgroups"))}</th></tr></thead><tbody>{callsign_rows}</tbody></table></div></section>
 <section class="card"><h2>{_escape(translate(locale, "reports.dailyTable"))}</h2><div class="table-wrap"><table><thead><tr><th>{_escape(translate(locale, "reports.date"))}</th><th>{_escape(translate(locale, "reports.qsos"))}</th><th>{_escape(translate(locale, "reports.talkTime"))}</th></tr></thead><tbody>{daily_rows}</tbody></table></div></section>
-<script>document.getElementById('reportContinent')?.addEventListener('change',()=>document.getElementById('reportForm').submit());document.getElementById('reportCountry')?.addEventListener('change',()=>document.getElementById('reportForm').submit());document.getElementById('reportTimeRange')?.addEventListener('change',()=>document.getElementById('reportForm').submit());</script>
+<script>const reportCountry=document.getElementById('reportCountry');if(reportCountry){{const options=Array.from(reportCountry.options).slice(1).sort((a,b)=>new Intl.Collator(document.documentElement.lang||'en',{{sensitivity:'base',numeric:true}}).compare(a.textContent,b.textContent));options.forEach(option=>reportCountry.appendChild(option));}}const reportTalkgroups=document.getElementById('reportTalkgroups'),reportTalkgroupValues=document.getElementById('reportTalkgroupValues');const syncReportTalkgroups=()=>{{if(!reportTalkgroupValues)return;const selected=new Set(Array.from(reportTalkgroups.querySelectorAll('input[data-talkgroup-value]:checked')).map(input=>input.dataset.talkgroupValue));Array.from(reportTalkgroupValues.options).forEach(option=>option.selected=selected.has(option.value));}};reportTalkgroups?.addEventListener('change',event=>{{const input=event.target;if(input?.type!=='checkbox')return;const all=reportTalkgroups.querySelector('input[data-all-talkgroups]');const specifics=Array.from(reportTalkgroups.querySelectorAll('input[data-talkgroup-value]'));if(input.dataset.allTalkgroups!==undefined&&input.checked)specifics.forEach(item=>item.checked=false);else if(input.dataset.talkgroupValue!==undefined&&input.checked)all.checked=false;if(!Array.from(reportTalkgroups.querySelectorAll('input[type="checkbox"]')).some(item=>item.checked))all.checked=true;syncReportTalkgroups();}});syncReportTalkgroups();document.getElementById('reportContinent')?.addEventListener('change',()=>document.getElementById('reportForm').submit());document.getElementById('reportCountry')?.addEventListener('change',()=>document.getElementById('reportForm').submit());document.getElementById('reportTimeRange')?.addEventListener('change',()=>document.getElementById('reportForm').submit());</script>
 """
     return _account_page_with_metrics(
         translate(locale, "reports.title"),
@@ -1843,6 +1913,11 @@ def _admin_maintenance_notice(request: Request, locale: str) -> str:
                 count=int(request.query_params.get("count", "0")),
                 raw=int(request.query_params.get("raw", "0")),
             )
+        elif notice == "irrelevant-raw":
+            message = translate(locale, "adminMaintenance.irrelevantRawSuccess").format(
+                count=int(request.query_params.get("count", "0")),
+                retained=int(request.query_params.get("retained", "0")),
+            )
         elif notice == "raw":
             months = int(request.query_params.get("months", "0"))
             message = translate(locale, "adminMaintenance.rawDeleteSuccess").format(
@@ -1909,7 +1984,15 @@ def admin_panel(request: Request) -> Response:
     rows = "".join(_admin_user_row(user, locale) for user in users) or f'<tr><td colspan="7" class="muted">{_escape(translate(locale, "admin.registeredUsers"))}</td></tr>'
     postgres_tables = _postgres_table_rows(postgres, locale)
     postgres_connections = _postgres_connection_rows(postgres, locale)
+    quality = stats["data_quality"]
     rebuild_confirmation = _escape(json.dumps(translate(locale, "adminMaintenance.rebuildConfirm")))
+    irrelevant_raw_confirmation = _escape(
+        json.dumps(
+            translate(locale, "adminMaintenance.irrelevantRawConfirm").format(
+                count=maintenance["irrelevant_raw_events"],
+            )
+        )
+    )
     maintenance_notice = _admin_maintenance_notice(request, locale)
     raw_retention_rows = "".join(
         _admin_retention_row(locale, "raw-events", months, retention[months])
@@ -1921,8 +2004,25 @@ def admin_panel(request: Request) -> Response:
     )
     content = f"""
 <section class="card"><div class="nav"><h1 style="margin:0">{_escape(translate(locale, "admin.title"))}</h1><form method="post" action="/admin/logout"><button class="button secondary" type="submit">{_escape(translate(locale, "admin.logout"))}</button></form></div>
-<div class="stats"><div class="stat"><small>{_escape(translate(locale, "admin.registeredUsers"))}</small><strong>{_escape(stats['total_users'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "admin.activeUsers"))}</small><strong>{_escape(stats['active_users'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "admin.qso24"))}</small><strong>{_escape(stats['qso_count'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "admin.talkTime24"))}</small><strong>{_escape(round(stats['duration_seconds'],1))} s</strong></div></div></section>
+<div class="stats"><div class="stat"><small>{_escape(translate(locale, "admin.registeredUsers"))}</small><strong>{_escape(stats['total_users'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "admin.activeUsers"))}</small><strong>{_escape(stats['active_users'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "admin.qso24"))}</small><strong>{_escape(stats['qso_count'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "admin.talkTime24"))}</small><strong>{_escape(_admin_hms(stats['duration_seconds']))}</strong></div></div></section>
 {maintenance_notice}
+<section class="card"><h2>{_escape(translate(locale, "admin.dataQuality"))}</h2><p class="muted">{_escape(translate(locale, "admin.dataQualityDescription"))}</p>
+<div class="stats data-quality-stats"><div class="stat"><small>{_escape(translate(locale, "admin.rawEvents"))}</small><strong>{_escape(quality['raw_events'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "admin.storedQsos"))}</small><strong>{_escape(quality['stored_qsos'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "admin.displayablePercentage"))}</small><strong>{_escape(quality['displayable_qso_percentage'])}%</strong></div><div class="stat"><small>{_escape(translate(locale, "admin.lastEvent"))}</small><strong>{_escape(_admin_datetime(quality['last_event_at']))}</strong></div></div>
+<div class="table-wrap"><table><thead><tr><th>{_escape(translate(locale, "admin.dataQualityMetric"))}</th><th>{_escape(translate(locale, "admin.value"))}</th></tr></thead><tbody>
+<tr><td>{_escape(translate(locale, "admin.rawVsQso"))}</td><td>{_escape(quality['raw_events'])} / {_escape(quality['stored_qsos'])}</td></tr>
+<tr><td>{_escape(translate(locale, "admin.kerchunksFiltered"))}</td><td>{_escape(quality['kerchunks_filtered'])}</td></tr>
+<tr><td>{_escape(translate(locale, "admin.duplicateRawEvents"))}</td><td>{_escape(quality['duplicate_raw_events'])}</td></tr>
+<tr><td>{_escape(translate(locale, "admin.invalidSessionStops"))}</td><td>{_escape(quality['invalid_session_stops'])}</td></tr>
+<tr><td>{_escape(translate(locale, "admin.negativeDurations"))}</td><td>{_escape(quality['negative_durations'])}</td></tr>
+<tr><td>{_escape(translate(locale, "admin.longDurations"))}</td><td>{_escape(quality['unusually_long_durations'])}</td></tr>
+<tr><td>{_escape(translate(locale, "admin.averageIngestionDelay"))}</td><td>{_escape(_admin_seconds(quality['average_ingestion_delay_seconds']))}</td></tr>
+<tr><td>{_escape(translate(locale, "admin.p95IngestionDelay"))}</td><td>{_escape(_admin_seconds(quality['p95_ingestion_delay_seconds']))}</td></tr>
+<tr><td>{_escape(translate(locale, "admin.maxIngestionDelay"))}</td><td>{_escape(_admin_seconds(quality['max_ingestion_delay_seconds']))}</td></tr>
+<tr><td>{_escape(translate(locale, "admin.invalidIngestionDelays"))}</td><td>{_escape(quality['invalid_ingestion_delays'])}</td></tr>
+<tr><td>{_escape(translate(locale, "admin.negativeIngestionDelays"))}</td><td>{_escape(quality['negative_ingestion_delays'])}</td></tr>
+<tr><td>{_escape(translate(locale, "admin.eventLag"))}</td><td>{_escape(_admin_seconds(quality['collector_lag_seconds']))}</td></tr>
+<tr><td>{_escape(translate(locale, "admin.collectorHeartbeatLag"))}</td><td>{_escape(_admin_seconds(quality['collector_heartbeat_lag_seconds']))}</td></tr>
+</tbody></table></div></section>
 <section class="card"><h2>{_escape(translate(locale, "admin.registeredUsers"))}</h2><p class="muted">{_escape(translate(locale, "admin.userMetrics"))}</p><div class="table-wrap"><table><thead><tr><th>{_escape(translate(locale, "user.callsign"))}</th><th>{_escape(translate(locale, "user.name"))}</th><th>{_escape(translate(locale, "user.email"))}</th><th>{_escape(translate(locale, "admin.status"))}</th><th>{_escape(translate(locale, "user.qsoCount"))}</th><th>{_escape(translate(locale, "home.talkTime"))}</th><th>{_escape(translate(locale, "admin.actions"))}</th></tr></thead><tbody>{rows}</tbody></table></div></section>
 <section class="card"><div class="nav"><h2 style="margin:0">{_escape(translate(locale, "admin.postgresql"))}</h2><form method="post" action="/admin/postgres/analyze"><button class="button secondary" type="submit">{_escape(translate(locale, "admin.refreshPlanner"))}</button></form></div>
 <div class="stats"><div class="stat"><small>{_escape(translate(locale, "admin.database"))}</small><strong>{_escape(postgres['database_name'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "admin.databaseSize"))}</small><strong>{_escape(postgres['database_size'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "admin.activeConnections"))}</small><strong>{_escape(postgres['active_connections'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "admin.totalConnections"))}</small><strong>{_escape(postgres['total_connections'])}</strong></div></div>
@@ -1931,6 +2031,7 @@ def admin_panel(request: Request) -> Response:
 <div class="charts"><div><h3>{_escape(translate(locale, "admin.applicationTables"))}</h3><div class="table-wrap"><table><thead><tr><th>{_escape(translate(locale, "admin.database"))}</th><th>{_escape(translate(locale, "admin.estimatedRows"))}</th><th>{_escape(translate(locale, "admin.totalSize"))}</th></tr></thead><tbody>{postgres_tables}</tbody></table></div></div><div><h3>{_escape(translate(locale, "admin.connectionStates"))}</h3><div class="table-wrap"><table><thead><tr><th>{_escape(translate(locale, "admin.state"))}</th><th>{_escape(translate(locale, "admin.connections"))}</th></tr></thead><tbody>{postgres_connections}</tbody></table></div></div></div></section>
 <section class="card"><h2>{_escape(translate(locale, "adminMaintenance.title"))}</h2><p class="muted">{_escape(translate(locale, "adminMaintenance.description"))}</p>
 <div class="card" style="background:#f8f9ff;box-shadow:none;margin:0 0 16px;padding:18px"><h3>{_escape(translate(locale, "adminMaintenance.rebuildTitle"))}</h3><p class="muted">{_escape(translate(locale, "adminMaintenance.rebuildDescription"))}</p><p><strong>{_escape(translate(locale, "adminMaintenance.currentQsos"))}:</strong> {_escape(maintenance['qsos'])} · <strong>{_escape(translate(locale, "adminMaintenance.rawEventsScanned"))}:</strong> {_escape(maintenance['raw_events'])}</p><form method="post" action="/admin/maintenance/rebuild-qsos" onsubmit="return window.confirm({rebuild_confirmation})"><button class="button" type="submit">{_escape(translate(locale, "adminMaintenance.rebuildButton"))}</button></form></div>
+<div class="card" style="background:#fff7ed;box-shadow:none;margin:0 0 16px;padding:18px"><h3>{_escape(translate(locale, "adminMaintenance.irrelevantRawTitle"))}</h3><p class="muted">{_escape(translate(locale, "adminMaintenance.irrelevantRawDescription"))}</p><p><strong>{_escape(translate(locale, "adminMaintenance.irrelevantRawEligible"))}:</strong> {_escape(maintenance['irrelevant_raw_events'])}</p><form method="post" action="/admin/maintenance/irrelevant-raw-events" onsubmit="return window.confirm({irrelevant_raw_confirmation})"><button class="button danger" type="submit">{_escape(translate(locale, "adminMaintenance.deleteButton"))}</button></form></div>
 <h3>{_escape(translate(locale, "adminMaintenance.rawTitle"))}</h3>{raw_retention_rows}
 <h3>{_escape(translate(locale, "adminMaintenance.qsoTitle"))}</h3>{qso_retention_rows}
 </section>

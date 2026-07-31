@@ -86,6 +86,25 @@ def admin_rebuild_qsos(request: Request) -> Response:
     )
 
 
+@router.post("/admin/maintenance/irrelevant-raw-events")
+def admin_clear_irrelevant_raw_events(request: Request) -> Response:
+    web = _web()
+    if not web._admin_allowed(request):
+        return _authentication_required()
+    result = web.get_store().clear_irrelevant_raw_events()
+    if request.headers.get("accept", "").startswith("application/json"):
+        return JSONResponse(jsonable_encoder(result))
+    return web._admin_redirect(
+        urlencode(
+            {
+                "notice": "irrelevant-raw",
+                "count": result["raw_events_deleted"],
+                "retained": result["raw_events_retained"],
+            }
+        )
+    )
+
+
 @router.post("/admin/maintenance/raw-events/{months}")
 def admin_clear_raw_events(months: int, request: Request) -> Response:
     web = _web()

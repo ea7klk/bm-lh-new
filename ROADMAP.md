@@ -52,14 +52,14 @@ The following analyses can use `context_id`, `link_call`, `link_name`, and `link
 
 These are especially useful in the admin panel:
 
-- [ ] Raw events versus stored QSOs.
-- [ ] Number of kerchunks filtered by the configured threshold.
-- [ ] Duplicate raw events.
-- [ ] Session-stop events without valid start/stop times.
-- [ ] Negative or unusually long durations.
-- [ ] Ingestion delay: `received_at - stop_at`.
-- [ ] Percentage of raw events that become displayable QSOs.
-- [ ] Last event time and current collector lag.
+- [x] Raw events versus stored QSOs.
+- [x] Number of kerchunks filtered by the configured threshold.
+- [x] Duplicate raw events.
+- [x] Session-stop events without valid start/stop times.
+- [x] Negative or unusually long durations.
+- [x] Ingestion delay: `received_at - stop_at`.
+- [x] Percentage of raw events that become displayable QSOs.
+- [x] Last event time and current collector lag.
 
 ## Privacy-sensitive options
 
