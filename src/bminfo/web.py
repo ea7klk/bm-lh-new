@@ -517,6 +517,7 @@ def dashboard(request: Request = None) -> HTMLResponse:
 @app.get("/about", response_class=HTMLResponse)
 def about_page(request: Request) -> HTMLResponse:
     locale = request_locale(request)
+    user = _current_user(request)
     content = f"""
 <section class="card">
   <h1>{_escape(translate(locale, "about.title"))}</h1>
@@ -548,7 +549,7 @@ def about_page(request: Request) -> HTMLResponse:
   <p style="margin-top:26px"><a class="button secondary" href="/">{_escape(translate(locale, "about.back"))}</a></p>
 </section>
 """
-    return _account_page(translate(locale, "about.title"), content, locale)
+    return _account_page(translate(locale, "about.title"), content, locale, user=user)
 
 
 def _escape(value: Any) -> str:
@@ -559,8 +560,30 @@ def _format_datetime(value: Any) -> str:
     return "—" if value is None else str(value).replace("+00:00", " UTC")
 
 
-def _account_page(title: str, content: str, locale: str = "en") -> HTMLResponse:
-    return _account_page_with_metrics(title, content, locale)
+def _subpage_account_links(locale: str, user: dict[str, Any] | None = None) -> str:
+    if user is None:
+        return (
+            f'<a href="/user/login">{_escape(translate(locale, "home.login"))}</a>'
+            f'<a href="/user/register">{_escape(translate(locale, "home.register"))}</a>'
+            f'<a href="/user/profile">{_escape(translate(locale, "home.myProfile"))}</a>'
+            f'<a href="/admin">{_escape(translate(locale, "home.admin"))}</a>'
+        )
+    return (
+        f'<a href="/user/profile">{_escape(user["callsign"])}</a>'
+        f'<a href="/user/live-qsos">{_escape(translate(locale, "live.title"))}</a>'
+        f'<a href="/user/reports">{_escape(translate(locale, "home.reports"))}</a>'
+        f'<form class="account-logout" method="post" action="/user/logout">'
+        f'<button type="submit">{_escape(translate(locale, "user.logout"))}</button></form>'
+    )
+
+
+def _account_page(
+    title: str,
+    content: str,
+    locale: str = "en",
+    user: dict[str, Any] | None = None,
+) -> HTMLResponse:
+    return _account_page_with_metrics(title, content, locale, user=user)
 
 
 def _account_page_with_metrics(
@@ -569,6 +592,7 @@ def _account_page_with_metrics(
     locale: str = "en",
     records_retrieved: int = 0,
     query_seconds: float = 0.0,
+    user: dict[str, Any] | None = None,
 ) -> HTMLResponse:
     locale = normalize_locale(locale) or "en"
     language_options = "".join(
@@ -589,8 +613,9 @@ def _account_page_with_metrics(
 <title>{_escape(title)} · BrandMeister</title>
 {matomo_script()}
 <style>
-body{{margin:0;min-height:100vh;padding:24px;background:linear-gradient(135deg,#667eea,#764ba2);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#1f2937}}
-.shell{{max-width:1100px;margin:auto}}.card{{background:#fff;border-radius:14px;box-shadow:0 18px 55px #1e153a33;padding:28px;margin-bottom:20px}}
+body{{margin:0;min-height:100vh;padding:22px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#1f2937}}
+.shell{{max-width:1440px;margin:auto}}.panel,.card{{background:#fff;border-radius:14px;box-shadow:0 18px 55px #1e153a33;margin-bottom:20px}}.card{{padding:28px}}
+.hero{{padding:27px 30px;text-align:center}}.hero h1{{margin:0 0 8px;font-size:clamp(26px,4vw,38px);letter-spacing:-.03em}}.hero p{{margin:0;color:#6b7280}}.live{{display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:5px 11px;border-radius:999px;background:#ecfdf3;color:#15803d;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}}.live i{{width:8px;height:8px;background:#22c55e;border-radius:50%;box-shadow:0 0 0 4px #bbf7d0;display:inline-block}}.account-links{{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:8px;margin-top:15px;font-size:13px}}.account-links a,.account-logout button{{display:inline-block;padding:8px 12px;border:0;border-radius:8px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font:inherit;font-weight:750;text-decoration:none;cursor:pointer}}.account-links a:hover,.account-logout button:hover{{filter:brightness(1.08)}}.account-logout{{display:inline;margin:0}}.subpage-nav{{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}}.subpage-nav .language{{color:#fff}}
 h1,h2{{margin-top:0}}h1{{text-align:center}}.muted{{color:#6b7280}}.nav{{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;gap:12px;flex-wrap:wrap}}
 .nav a,.button{{display:inline-block;padding:9px 14px;border-radius:8px;border:0;background:linear-gradient(135deg,#667eea,#764ba2);color:white;text-decoration:none;font-weight:700;cursor:pointer}}
 .nav a.secondary,.button.secondary{{background:#f1f3ff;color:#5457bd}}.language{{display:flex;align-items:center;gap:7px;color:#fff;font-size:13px;font-weight:700}}.language select{{padding:7px 9px;border:0;border-radius:7px;background:#fff;color:#374151;font:inherit}}.form{{max-width:520px;margin:auto}}label{{display:block;margin:13px 0 5px;font-size:13px;font-weight:700;color:#4b5563}}input{{width:100%;height:42px;padding:0 11px;border:2px solid #e5e7eb;border-radius:8px;box-sizing:border-box;font:inherit}}input:focus{{outline:0;border-color:#667eea}}.form .button{{margin-top:18px;width:100%}}
@@ -600,7 +625,7 @@ h1,h2{{margin-top:0}}h1{{text-align:center}}.muted{{color:#6b7280}}.nav{{display
 table{{width:100%;border-collapse:collapse}}th,td{{padding:11px;border-bottom:1px solid #e8eaf0;text-align:left;font-size:13px}}th{{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}}.table-wrap{{overflow:auto;border:1px solid #e8eaf0;border-radius:9px}}.inline{{display:inline}}.danger{{background:#dc3545}}.warning{{color:#b45309;font-weight:700}}
 .cookie-consent{{position:fixed;z-index:1000;left:16px;right:16px;bottom:16px;display:flex;justify-content:center}}.cookie-consent[hidden]{{display:none}}.cookie-consent-card{{max-width:760px;width:100%;padding:20px 22px;background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 18px 55px #1e153a55}}.cookie-consent-card h2,.cookie-consent-card h3{{margin:0 0 8px}}.cookie-consent-card p{{margin:0;color:#4b5563;line-height:1.5;font-size:14px}}.cookie-consent-actions{{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:15px}}.cookie-consent-actions .button{{width:auto;margin:0}}.cookie-settings-link,.cookie-settings-footer{{border:0;background:none;color:#5457bd;text-decoration:underline;cursor:pointer;font:inherit;font-size:13px}}.cookie-settings{{margin-top:15px;padding-top:15px;border-top:1px solid #e5e7eb}}.cookie-option{{display:flex;align-items:flex-start;gap:9px;margin:11px 0;font-weight:400}}.cookie-option input{{width:auto;height:auto;margin-top:3px}}.cookie-option span{{display:flex;flex-direction:column;gap:3px}}.cookie-option small{{color:#6b7280;font-weight:400;line-height:1.4}}.cookie-settings-footer{{display:block;margin:24px auto 0;color:#fff}}.page-footer{{color:#fff;text-align:center;font-size:12px;line-height:1.6;padding:4px 0 8px}}.page-footer a{{color:#fff}}
 @media(max-width:700px){{body{{padding:10px}}.card{{padding:20px}}.stats{{grid-template-columns:repeat(2,1fr)}}.charts{{grid-template-columns:1fr}}table{{min-width:760px}}}}
-</style></head><body><main class="shell"><div class="nav"><a href="/">{_escape(translate(locale, "common.dashboard"))}</a><span style="color:white;font-weight:800">{_escape(translate(locale, "common.accounts"))}</span><label class="language">{_escape(translate(locale, "common.language"))}<select id="language">{language_options}</select></label></div>{content}{consent_markup}<footer class="page-footer"><span>{_escape(metrics)}</span> · <a href="/">{_escape(translate(locale, "common.dashboard"))}</a></footer></main><script>document.getElementById('language').addEventListener('change',function(){{document.cookie='{LANGUAGE_COOKIE}='+encodeURIComponent(this.value)+'; Max-Age={LANGUAGE_COOKIE_MAX_AGE}; Path=/; SameSite=Lax';window.location.reload();}});</script>{cookie_consent_script(analytics_enabled)}</body></html>
+</style></head><body><main class="shell"><header class="panel hero"><h1>🔊 {_escape(translate(locale, "home.title"))}</h1><p>{_escape(translate(locale, "home.subtitle"))}</p><span class="live"><i></i> {_escape(translate(locale, "home.liveFeed"))}</span><div class="account-links">{_subpage_account_links(locale, user)}</div></header><div class="subpage-nav"><a class="button secondary" href="/">{_escape(translate(locale, "common.dashboard"))}</a><label class="language">{_escape(translate(locale, "common.language"))}<select id="language">{language_options}</select></label></div>{content}{consent_markup}<footer class="page-footer"><span>{_escape(metrics)}</span> · <a href="/">{_escape(translate(locale, "common.dashboard"))}</a></footer></main><script>document.getElementById('language').addEventListener('change',function(){{document.cookie='{LANGUAGE_COOKIE}='+encodeURIComponent(this.value)+'; Max-Age={LANGUAGE_COOKIE_MAX_AGE}; Path=/; SameSite=Lax';window.location.reload();}});</script>{cookie_consent_script(analytics_enabled)}</body></html>
 """
     )
 
@@ -924,6 +949,7 @@ def user_profile(request: Request) -> Response:
         locale,
         records_retrieved=stats["qso_count"],
         query_seconds=query_seconds,
+        user=user,
     )
 
 
@@ -1259,6 +1285,7 @@ document.getElementById('liveContinent').addEventListener('change',()=>loadCount
         locale,
         records_retrieved=len(live_rows),
         query_seconds=query_seconds,
+        user=user,
     )
 
 
@@ -1475,6 +1502,7 @@ def _report_page(
         locale,
         records_retrieved=report["summary"]["qso_count"],
         query_seconds=query_seconds,
+        user=user,
     )
 
 
@@ -1763,9 +1791,9 @@ async def user_change_password(request: Request) -> Response:
         return RedirectResponse("/user/login", status_code=303)
     fields = await _form_fields(request)
     if not verify_password(fields.get("current_password", ""), user["password_hash"]):
-        return _account_page(translate(locale, "user.profile"), f'<section class="card"><p class="error">{_escape(translate(locale, "user.currentPasswordIncorrect"))}</p><a class="button" href="/user/profile">{_escape(translate(locale, "user.profile"))}</a></section>', locale)
+        return _account_page(translate(locale, "user.profile"), f'<section class="card"><p class="error">{_escape(translate(locale, "user.currentPasswordIncorrect"))}</p><a class="button" href="/user/profile">{_escape(translate(locale, "user.profile"))}</a></section>', locale, user=user)
     if len(fields.get("new_password", "")) < 8:
-        return _account_page(translate(locale, "user.profile"), f'<section class="card"><p class="error">{_escape(translate(locale, "user.newPasswordMin"))}</p><a class="button" href="/user/profile">{_escape(translate(locale, "user.profile"))}</a></section>', locale)
+        return _account_page(translate(locale, "user.profile"), f'<section class="card"><p class="error">{_escape(translate(locale, "user.newPasswordMin"))}</p><a class="button" href="/user/profile">{_escape(translate(locale, "user.profile"))}</a></section>', locale, user=user)
     get_store().update_user_password(user["id"], hash_password(fields["new_password"]))
     return RedirectResponse("/user/profile", status_code=303)
 

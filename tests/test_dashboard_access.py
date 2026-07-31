@@ -142,6 +142,28 @@ def test_account_pages_include_translated_query_metrics_footer():
     assert '<footer class="page-footer">' in page
 
 
+def test_subpage_uses_dashboard_hero_header():
+    page = web._account_page("Test page", "<section>Content</section>").body.decode("utf-8")
+
+    assert '<header class="panel hero">' in page
+    assert "🔊 BrandMeister Lastheard" in page
+    assert "Live DMR activity, talkgroup statistics and talk time" in page
+    assert 'class="live"><i></i> live feed' in page
+
+
+def test_authenticated_subpage_header_uses_callsign_navigation():
+    page = web._account_page(
+        "Test page",
+        "<section>Content</section>",
+        user={"callsign": "EA7KLK"},
+    ).body.decode("utf-8")
+
+    assert 'href="/user/profile">EA7KLK</a>' in page
+    assert 'href="/user/live-qsos">Live QSOs</a>' in page
+    assert 'action="/user/logout"' in page
+    assert 'href="/user/login">Log in</a>' not in page
+
+
 def test_authenticated_dashboard_includes_gated_controls(monkeypatch):
     monkeypatch.setattr(web, "_current_user", lambda request: {"callsign": "EA7KLK"})
 
