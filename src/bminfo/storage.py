@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
+import threading
 from typing import Any, Sequence
 
 import psycopg
@@ -18,6 +20,50 @@ DISPLAY_EXCLUDED_DESTINATION_ID = 9
 QSO_NOTIFY_CHANNEL = "bminfo_qso_inserted"
 
 
+class _PooledConnection:
+    """Compatibility wrapper that gives each store operation a pooled connection."""
+
+    def __init__(self, pool: Any):
+        self._pool = pool
+        self._local = threading.local()
+
+    def _active_connection(self) -> Any | None:
+        return getattr(self._local, "connection", None)
+
+    @contextmanager
+    def cursor(self, *args: Any, **kwargs: Any):
+        connection = self._active_connection()
+        if connection is not None:
+            with connection.cursor(*args, **kwargs) as cursor:
+                yield cursor
+            return
+        with self._pool.connection() as connection:
+            with connection.cursor(*args, **kwargs) as cursor:
+                yield cursor
+
+    @contextmanager
+    def transaction(self):
+        if self._active_connection() is not None:
+            raise RuntimeError("nested store transactions are not supported")
+        with self._pool.connection() as connection:
+            self._local.connection = connection
+            try:
+                with connection.transaction():
+                    yield
+            finally:
+                self._local.connection = None
+
+    def execute(self, *args: Any, **kwargs: Any) -> Any:
+        connection = self._active_connection()
+        if connection is not None:
+            return connection.execute(*args, **kwargs)
+        with self._pool.connection() as connection:
+            return connection.execute(*args, **kwargs)
+
+    def close(self) -> None:
+        self._pool.close()
+
+
 def _talkgroup_ids(value: int | Sequence[int] | None) -> list[int]:
     if value is None:
         return []
@@ -28,8 +74,19 @@ def _talkgroup_ids(value: int | Sequence[int] | None) -> list[int]:
 
 class PostgresStore:
     def __init__(self, dsn: str):
-        self.connection = psycopg.connect(dsn)
-        self.connection.autocommit = True
+        # Keep the pool dependency lazy so tests that inject fake connections
+        # do not require psycopg_pool at import time.
+        from psycopg_pool import ConnectionPool
+
+        from .config import settings
+
+        self.pool = ConnectionPool(
+            conninfo=dsn,
+            min_size=max(1, settings.postgres_pool_min_size),
+            max_size=max(settings.postgres_pool_min_size, settings.postgres_pool_max_size),
+            kwargs={"autocommit": True},
+        )
+        self.connection = _PooledConnection(self.pool)
 
     def close(self) -> None:
         self.connection.close()
@@ -47,9 +104,15 @@ class PostgresStore:
             )
 
     def initialize(self, kerchunk_threshold_seconds: float = 3.0) -> None:
-        self.connection.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
-        self._ensure_pinned_talkgroups()
-        self._backfill_pinned_talkgroup_qsos(kerchunk_threshold_seconds)
+        # Multiple Uvicorn workers start at the same time. Serialize schema
+        # setup and the pinned-TG backfill to avoid concurrent upserts/deletes
+        # deadlocking on qsos and talkgroups.
+        with self.connection.transaction():
+            with self.connection.cursor() as cursor:
+                cursor.execute("SELECT pg_advisory_xact_lock(%s)", (918273645,))
+                cursor.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
+            self._ensure_pinned_talkgroups()
+            self._backfill_pinned_talkgroup_qsos(kerchunk_threshold_seconds)
 
     def _ensure_pinned_talkgroups(self) -> None:
         with self.connection.cursor() as cursor:

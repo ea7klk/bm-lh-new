@@ -41,6 +41,8 @@ class Settings:
     admin_password: str = os.getenv("ADMIN_PASSWORD", "")
     cookie_secure: bool = os.getenv("COOKIE_SECURE", "false").lower() == "true"
     session_hours: int = int(os.getenv("SESSION_HOURS", "168"))
+    postgres_pool_min_size: int = int(os.getenv("POSTGRES_POOL_MIN_SIZE", "2"))
+    postgres_pool_max_size: int = int(os.getenv("POSTGRES_POOL_MAX_SIZE", "20"))
     matomo_enabled: bool = os.getenv("MATOMO_ENABLED", "false").lower() == "true"
     matomo_url: str = os.getenv("MATOMO_URL", "")
     matomo_site_id: str = os.getenv("MATOMO_SITE_ID", "")

@@ -27,13 +27,15 @@ services:
       EXCLUDE_LOCAL_TALKGROUP: ${EXCLUDE_LOCAL_TALKGROUP}
       KERCHUNK_THRESHOLD_SECONDS: ${KERCHUNK_THRESHOLD_SECONDS}
       COLLECTOR_HEARTBEAT_SECONDS: ${COLLECTOR_HEARTBEAT_SECONDS}
+      POSTGRES_POOL_MIN_SIZE: ${POSTGRES_POOL_MIN_SIZE:-2}
+      POSTGRES_POOL_MAX_SIZE: ${POSTGRES_POOL_MAX_SIZE:-20}
     depends_on:
       - postgres
     restart: unless-stopped
 
   web:
     build: .
-    command: uvicorn bminfo.web:app --host ${APP_HOST} --port ${APP_PORT}
+    command: uvicorn bminfo.web:app --host ${APP_HOST} --port ${APP_PORT} --workers ${WEB_WORKERS:-2}
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
@@ -45,6 +47,8 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       COOKIE_SECURE: ${COOKIE_SECURE}
       SESSION_HOURS: ${SESSION_HOURS}
+      POSTGRES_POOL_MIN_SIZE: ${POSTGRES_POOL_MIN_SIZE:-2}
+      POSTGRES_POOL_MAX_SIZE: ${POSTGRES_POOL_MAX_SIZE:-20}
       MATOMO_ENABLED: ${MATOMO_ENABLED}
       MATOMO_URL: ${MATOMO_URL}
       MATOMO_SITE_ID: ${MATOMO_SITE_ID}

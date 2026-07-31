@@ -99,6 +99,27 @@ Open <http://localhost:8000> for the dashboard. The API endpoints are:
 - `GET /health`
 - `GET /status` (database, collector, table-row, and active-user status)
 
+## Repeatable load test
+
+`scripts/load_test.py` exercises the main dashboard, public statistics, recent QSOs, profile
+statistics, live QSOs, HTML reports, and PDF exports with 25 concurrent clients by default. It
+uses only Python's standard library and never stores or prints the supplied password.
+
+```bash
+LOAD_TEST_LOGIN=EA7KLK \
+LOAD_TEST_PASSWORD='replace-with-test-password' \
+python scripts/load_test.py \
+  --base-url https://bminfo.ea7klk.es \
+  --requests 250 \
+  --concurrency 25
+```
+
+Set `LOAD_TEST_CONCURRENCY` to change the default concurrency for repeated runs, or keep using
+the `--concurrency` option to override it per invocation.
+
+For a public-only run, omit `LOAD_TEST_LOGIN` and `LOAD_TEST_PASSWORD`. Use a disposable test
+account for live deployments and keep the request count/concurrency bounded.
+
 ## Pull request merge protection
 
 The `Tests` job runs for every push and pull request, and also for merge-queue groups. To prevent
@@ -149,7 +170,15 @@ KERCHUNK_THRESHOLD_SECONDS=3
 COLLECTOR_HEARTBEAT_SECONDS=30
 # Seven days since the user's last authenticated request.
 SESSION_HOURS=168
+# Keep report generation from blocking other requests under concurrent use.
+WEB_WORKERS=2
+POSTGRES_POOL_MIN_SIZE=2
+POSTGRES_POOL_MAX_SIZE=20
 ```
+
+The web process uses a bounded PostgreSQL pool per worker. Increase `WEB_WORKERS` for additional
+CPU capacity and adjust `POSTGRES_POOL_MAX_SIZE` only if the PostgreSQL server has enough
+connection capacity for all web workers, collectors, and administrative connections.
 
 After changing `KERCHUNK_THRESHOLD_SECONDS` in `.env`, recreate both the `web` and
 `collector` services so their process environments are refreshed:
