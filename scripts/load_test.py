@@ -160,6 +160,30 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def print_summary(results: list[Result]) -> None:
+    headers = ["Endpoint", "Req/s", "P50 ms", "P95 ms", "P99 ms", "Max ms", "Errors", "HTTP"]
+    rows = [
+        [
+            result.path if len(result.path) <= 52 else f"{result.path[:49]}...",
+            f"{result.requests_per_second:.2f}",
+            f"{result.p50_ms:.2f}",
+            f"{result.p95_ms:.2f}",
+            f"{result.p99_ms:.2f}",
+            f"{result.max_ms:.2f}",
+            str(result.errors),
+            ", ".join(f"{status}={count}" for status, count in sorted(result.statuses.items())),
+        ]
+        for result in results
+    ]
+    widths = [max(len(header), *(len(row[index]) for row in rows)) for index, header in enumerate(headers)]
+    separator = "-+-".join("-" * width for width in widths)
+    print("\nLoad test summary")
+    print(" | ".join(header.ljust(widths[index]) for index, header in enumerate(headers)))
+    print(separator)
+    for row in rows:
+        print(" | ".join(value.ljust(widths[index]) for index, value in enumerate(row)))
+
+
 def main() -> int:
     arguments = parse_args()
     if arguments.requests < 1 or arguments.concurrency < 1:
@@ -171,8 +195,10 @@ def main() -> int:
             raise SystemExit("--login and --password must be supplied together")
         cookie = login(base_url, arguments.login, arguments.password)
 
+    results: list[Result] = []
     for path, authenticated in paths(cookie is not None):
         result = benchmark(base_url, path, cookie if authenticated else None, arguments.requests, arguments.concurrency)
+        results.append(result)
         print(json.dumps({
             "base_url": base_url,
             "path": result.path,
@@ -188,6 +214,7 @@ def main() -> int:
             "max_ms": round(result.max_ms, 2),
             "bytes_received": result.bytes_received,
         }, sort_keys=True))
+    print_summary(results)
     return 0
 
 
