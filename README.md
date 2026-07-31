@@ -4,6 +4,38 @@ This is a collector and dashboard for the BrandMeister LastHeard Socket.IO strea
 responsive grouped-statistics interface modeled after
 [bm-lh-nextgen](https://github.com/ea7klk/bm-lh-nextgen).
 
+## Application structure
+
+The web application is assembled in `src/bminfo/web.py`, but route groups and
+their responsibilities are split into focused modules:
+
+```text
+src/bminfo/
+├── web.py             application lifecycle, middleware, dashboard, account,
+│                      live-QSO, report, and page-rendering coordination
+├── public_routes.py   health, status, public statistics, filters, and QSO APIs
+├── admin_routes.py    admin APIs, QSO rebuild, retention cleanup, and user actions
+├── storage.py         PostgreSQL queries, transactions, and data maintenance
+├── collector.py       LastHeard ingestion and raw-event/QSO processing
+├── auth.py            password hashing, sessions, and security tokens
+├── i18n.py            translation catalog and locale handling
+└── config.py          environment-backed application settings
+```
+
+`web.py` includes the public and admin routers and re-exports their handler
+names for compatibility with existing integrations and tests. The extracted
+handlers resolve shared storage, settings, and authentication helpers when a
+request is handled, so runtime configuration and test overrides continue to
+work without duplicating application state. New route groups should follow the
+same pattern: keep HTTP concerns in a router module, put database behavior in
+`storage.py`, and keep presentation helpers separate from query logic.
+
+Run the full test suite after changing a route or storage query:
+
+```bash
+pytest -q
+```
+
 ## Data model
 
 BrandMeister's completed LastHeard records contain an `Event` of `Session-Stop`, a stable

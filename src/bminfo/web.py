@@ -32,6 +32,20 @@ from .auth import (
     verify_admin_token,
     verify_password,
 )
+from .admin_routes import (
+    admin_clear_qsos,
+    admin_clear_raw_events,
+    admin_postgres,
+    admin_postgres_analyze,
+    admin_rebuild_qsos,
+    admin_stats,
+    admin_user_delete,
+    admin_user_delete_page,
+    admin_user_expire_sessions,
+    admin_user_status,
+    admin_users,
+    router as admin_router,
+)
 from .config import settings
 from .consent import cookie_consent_markup, cookie_consent_script
 from .email import (
@@ -50,6 +64,22 @@ from .i18n import (
     translate,
 )
 from .matomo import matomo_configured, matomo_script
+from .public_routes import (
+    active_user_talkgroups,
+    health,
+    public_continents,
+    public_countries,
+    public_grouped_callsigns,
+    public_grouped_lastheard,
+    public_lastheard,
+    public_locale,
+    public_stats,
+    public_talkgroups,
+    qsos,
+    router as public_router,
+    stats_summary,
+    status,
+)
 from .storage import QSO_NOTIFY_CHANNEL, PostgresStore
 
 
@@ -97,6 +127,8 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="BrandMeister Statistics", lifespan=lifespan)
+app.include_router(public_router)
+app.include_router(admin_router)
 
 
 def detect_locale(request: Request) -> str:
@@ -216,196 +248,6 @@ def _public_callsign(row: dict[str, Any]) -> dict[str, Any]:
         "uniqueTalkgroups": row.get("unique_talkgroups", 0),
         "lastSeen": row.get("last_seen_at"),
     }
-
-
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
-
-
-@app.get("/status")
-def status() -> JSONResponse:
-    """Expose database, collector, table, and active-user health metrics."""
-    try:
-        stale_after_seconds = max(settings.collector_heartbeat_seconds * 3, 90)
-        payload = get_store().status_snapshot(stale_after_seconds)
-    except Exception:
-        return JSONResponse(
-            {
-                "status": "unhealthy",
-                "database": {"status": "unhealthy", "connection": "failed"},
-                "collector": {"status": "unknown"},
-                "tables": {"raw_events": None, "qsos": None},
-                "active_users": None,
-            },
-            status_code=503,
-        )
-    return JSONResponse(
-        jsonable_encoder(payload),
-        status_code=200 if payload["status"] == "ok" else 503,
-    )
-
-
-@app.get("/locales/{locale}")
-def public_locale(locale: str) -> JSONResponse:
-    normalized = normalize_locale(locale)
-    if normalized not in SUPPORTED_LOCALES:
-        return JSONResponse({"error": "unsupported locale"}, status_code=404)
-    return JSONResponse(catalog(normalized))
-
-
-@app.get("/api/stats/summary")
-def stats_summary() -> dict[str, Any]:
-    return get_store().summary()
-
-
-@app.get("/api/qsos")
-def qsos(
-    request: Request,
-    limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
-    callsign: str | None = None,
-    talkgroup: list[int] | None = Query(default=None),
-) -> Any:
-    access_error = _dashboard_access_error(request, callsign=callsign)
-    if access_error is not None:
-        return access_error
-    return get_store().list_qsos(limit, offset, callsign, talkgroup)
-
-
-@app.get("/public/stats")
-def public_stats(
-    request: Request,
-    timeRange: str = "24h",
-    continent: str | None = None,
-    country: str | None = None,
-    talkgroup: list[int] | None = Query(default=None),
-    callsign: str | None = None,
-) -> Any:
-    access_error = _dashboard_access_error(request, time_range=timeRange, callsign=callsign)
-    if access_error is not None:
-        return access_error
-    summary = get_store().summary(start_time(timeRange), continent, country, talkgroup, callsign)
-    histogram = get_store().activity_histogram(
-        start_time(timeRange),
-        histogram_bucket_seconds(timeRange),
-        continent,
-        country,
-        talkgroup,
-        callsign,
-    )
-    return {
-        "totalEntries": summary["qso_count"],
-        "activityRange": summary["qso_count"],
-        "activity24h": summary["qso_count"],
-        "uniqueCallsigns": summary["unique_sources"],
-        "uniqueTalkgroups": summary["unique_destinations"],
-        "totalDuration": summary["duration_seconds"],
-        "durationRange": summary["duration_seconds"],
-        "firstQsoAt": summary["first_qso_at"],
-        "lastQsoAt": summary["last_qso_at"],
-        "timeRange": timeRange,
-        "histogram": histogram,
-    }
-
-
-@app.get("/public/lastheard")
-def public_lastheard(
-    request: Request,
-    limit: int = Query(default=50, ge=1, le=500),
-    callsign: str | None = None,
-    talkgroup: list[int] | None = Query(default=None),
-) -> Any:
-    access_error = _dashboard_access_error(request, callsign=callsign)
-    if access_error is not None:
-        return access_error
-    rows = get_store().list_qsos(
-        limit, 0, callsign, talkgroup,
-        min_duration_seconds=settings.kerchunk_threshold_seconds,
-    )
-    return [_public_qso(row) for row in rows]
-
-
-@app.get("/public/lastheard/grouped")
-def public_grouped_lastheard(
-    request: Request,
-    timeRange: str = "5m",
-    limit: int = Query(default=25, ge=1, le=50),
-    continent: str | None = None,
-    country: str | None = None,
-    talkgroup: list[int] | None = Query(default=None),
-    callsign: str | None = None,
-) -> Any:
-    access_error = _dashboard_access_error(request, time_range=timeRange, callsign=callsign)
-    if access_error is not None:
-        return access_error
-    rows = get_store().grouped_by_talkgroup(
-        start_time(timeRange), limit, continent, country, talkgroup, callsign
-    )
-    return [_public_talkgroup(row) for row in rows]
-
-
-@app.get("/public/lastheard/callsigns")
-def public_grouped_callsigns(
-    request: Request,
-    timeRange: str = "5m",
-    limit: int = Query(default=25, ge=1, le=50),
-    callsign: str | None = None,
-    continent: str | None = None,
-    country: str | None = None,
-    talkgroup: list[int] | None = Query(default=None),
-) -> Any:
-    access_error = _dashboard_access_error(
-        request, callsign=callsign, time_range=timeRange
-    )
-    if access_error is not None:
-        return access_error
-    rows = get_store().grouped_by_callsign(
-        start_time(timeRange), limit, callsign, continent, country, talkgroup
-    )
-    return [_public_callsign(row) for row in rows]
-
-
-@app.get("/public/continents")
-def public_continents() -> list[str]:
-    return get_store().continents()
-
-
-@app.get("/public/countries")
-def public_countries(continent: str | None = None) -> list[dict[str, str]]:
-    return get_store().countries(continent)
-
-
-@app.get("/public/talkgroups")
-def public_talkgroups(
-    continent: str | None = None,
-    country: str | None = None,
-) -> list[dict[str, Any]]:
-    return get_store().talkgroups(continent, country)
-
-
-@app.get("/user/talkgroups")
-def active_user_talkgroups(
-    request: Request,
-    timeRange: str = "30m",
-    continent: str | None = None,
-    country: str | None = None,
-) -> Any:
-    if _current_user(request) is None:
-        return JSONResponse({"error": "authentication required"}, status_code=401)
-    access_error = _dashboard_access_error(request, time_range=timeRange)
-    if access_error is not None:
-        return access_error
-    rows = get_store().active_talkgroups(start_time(timeRange), continent, country)
-    return [
-        {
-            "value": row["value"],
-            "label": row["label"],
-            "count": row["count"],
-            "totalDuration": row["total_duration_ms"] / 1000,
-        }
-        for row in rows
-    ]
 
 
 def _index_path() -> Path:
@@ -2100,120 +1942,3 @@ def admin_panel(request: Request) -> Response:
         records_retrieved=len(users),
         query_seconds=query_seconds,
     )
-
-
-@app.get("/admin/stats")
-def admin_stats(request: Request) -> JSONResponse:
-    if not _admin_allowed(request):
-        return JSONResponse({"error": "admin authentication required"}, status_code=401)
-    return JSONResponse(jsonable_encoder(get_store().admin_statistics()))
-
-
-@app.get("/admin/users")
-def admin_users(request: Request) -> JSONResponse:
-    if not _admin_allowed(request):
-        return JSONResponse({"error": "admin authentication required"}, status_code=401)
-    return JSONResponse(jsonable_encoder(get_store().list_users()))
-
-
-@app.get("/admin/postgres")
-def admin_postgres(request: Request) -> JSONResponse:
-    if not _admin_allowed(request):
-        return JSONResponse({"error": "admin authentication required"}, status_code=401)
-    return JSONResponse(jsonable_encoder(get_store().postgres_overview()))
-
-
-@app.post("/admin/postgres/analyze")
-def admin_postgres_analyze(request: Request) -> Response:
-    if not _admin_allowed(request):
-        return JSONResponse({"error": "admin authentication required"}, status_code=401)
-    get_store().analyze_postgres()
-    if request.headers.get("accept", "").startswith("application/json"):
-        return JSONResponse({"analyzed": True})
-    return _admin_redirect()
-
-
-@app.post("/admin/maintenance/rebuild-qsos")
-def admin_rebuild_qsos(request: Request) -> Response:
-    if not _admin_allowed(request):
-        return JSONResponse({"error": "admin authentication required"}, status_code=401)
-    result = get_store().rebuild_qsos_from_raw_events(settings.kerchunk_threshold_seconds)
-    if request.headers.get("accept", "").startswith("application/json"):
-        return JSONResponse(jsonable_encoder(result))
-    return _admin_redirect(urlencode({
-        "notice": "rebuild",
-        "count": result["qsos_rebuilt"],
-        "raw": result["raw_events_scanned"],
-    }))
-
-
-@app.post("/admin/maintenance/raw-events/{months}")
-def admin_clear_raw_events(months: int, request: Request) -> Response:
-    if not _admin_allowed(request):
-        return JSONResponse({"error": "admin authentication required"}, status_code=401)
-    if months not in ADMIN_RETENTION_MONTHS:
-        return JSONResponse({"error": "retention period must be 1, 2, 3, or 6 months"}, status_code=400)
-    result = get_store().clear_old_raw_events(months)
-    if request.headers.get("accept", "").startswith("application/json"):
-        return JSONResponse(jsonable_encoder(result))
-    return _admin_redirect(urlencode({
-        "notice": "raw",
-        "months": months,
-        "count": result["raw_events_deleted"],
-        "qsos": result["qsos_deleted"],
-    }))
-
-
-@app.post("/admin/maintenance/qsos/{months}")
-def admin_clear_qsos(months: int, request: Request) -> Response:
-    if not _admin_allowed(request):
-        return JSONResponse({"error": "admin authentication required"}, status_code=401)
-    if months not in ADMIN_RETENTION_MONTHS:
-        return JSONResponse({"error": "retention period must be 1, 2, 3, or 6 months"}, status_code=400)
-    result = get_store().clear_old_qsos(months)
-    if request.headers.get("accept", "").startswith("application/json"):
-        return JSONResponse(jsonable_encoder(result))
-    return _admin_redirect(urlencode({
-        "notice": "qso",
-        "months": months,
-        "count": result["qsos_deleted"],
-    }))
-
-
-@app.post("/admin/users/{user_id}/status")
-async def admin_user_status(user_id: int, request: Request) -> Response:
-    if not _admin_allowed(request):
-        return JSONResponse({"error": "admin authentication required"}, status_code=401)
-    fields = await _form_fields(request)
-    active = fields.get("active", "false").lower() in {"1", "true", "yes", "on"}
-    updated = get_store().set_user_active(user_id, active)
-    if request.headers.get("content-type", "").startswith("application/json"):
-        return JSONResponse({"updated": updated, "active": active})
-    return _admin_redirect()
-
-
-@app.post("/admin/users/{user_id}/delete")
-def admin_user_delete_page(user_id: int, request: Request) -> Response:
-    if not _admin_allowed(request):
-        return JSONResponse({"error": "admin authentication required"}, status_code=401)
-    deleted = get_store().delete_user(user_id)
-    if request.headers.get("accept", "").startswith("application/json"):
-        return JSONResponse({"deleted": deleted})
-    return _admin_redirect()
-
-
-@app.post("/admin/users/{user_id}/expire-sessions")
-def admin_user_expire_sessions(user_id: int, request: Request) -> Response:
-    if not _admin_allowed(request):
-        return JSONResponse({"error": "admin authentication required"}, status_code=401)
-    expired = get_store().expire_user_sessions(user_id)
-    if request.headers.get("accept", "").startswith("application/json"):
-        return JSONResponse({"expired": expired, "user_id": user_id})
-    return _admin_redirect(urlencode({"notice": "sessions", "count": expired}))
-
-
-@app.delete("/admin/users/{user_id}")
-def admin_user_delete(user_id: int, request: Request) -> JSONResponse:
-    if not _admin_allowed(request):
-        return JSONResponse({"error": "admin authentication required"}, status_code=401)
-    return JSONResponse({"deleted": get_store().delete_user(user_id)})
