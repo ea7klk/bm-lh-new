@@ -1322,6 +1322,7 @@ def _report_concurrency_chart(
             f'title="{_escape(translate(locale, "reports.activeTalkgroups"))}: {talkgroups}"></i>'
             f'<i class="concurrency-sources" style="height:{sources / maximum * 100:.1f}%" '
             f'title="{_escape(translate(locale, "reports.activeSources"))}: {sources}"></i>'
+            f'<span class="concurrency-value" style="position:absolute;top:-16px;font-size:9px;color:#6b7280;white-space:nowrap">{talkgroups}/{sources}</span>'
             f'<small>{_escape(visible_label)}</small></div>'
         )
     legend = (
