@@ -1875,7 +1875,7 @@ class PostgresStore:
         }
 
     def clear_irrelevant_raw_events(self) -> dict[str, int]:
-        """Delete non-session-stop raw packets and compact the raw table.
+        """Delete non-session-stop raw packets and maintain the raw table.
 
         Displayable QSOs are built from session-stop packets. Any historical
         non-session-stop row referenced by a QSO is retained defensively so
@@ -1885,30 +1885,33 @@ class PostgresStore:
             with self.connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT COUNT(*)::bigint
-                    FROM raw_events
-                    WHERE lower(event_type) <> 'session-stop'
+                    WITH candidates AS MATERIALIZED (
+                        SELECT r.id
+                        FROM raw_events r
+                        WHERE lower(r.event_type) <> 'session-stop'
+                    ), deleted AS (
+                        DELETE FROM raw_events r
+                        USING candidates c
+                        WHERE r.id = c.id
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM qsos q
+                              WHERE q.raw_event_id = r.id
+                          )
+                        RETURNING r.id
+                    )
+                    SELECT
+                        (SELECT COUNT(*)::bigint FROM candidates),
+                        (SELECT COUNT(*)::bigint FROM deleted)
                     """
                 )
-                candidates = int(cursor.fetchone()[0])
-                cursor.execute(
-                    """
-                    DELETE FROM raw_events r
-                    WHERE lower(r.event_type) <> 'session-stop'
-                      AND NOT EXISTS (
-                          SELECT 1
-                          FROM qsos q
-                          WHERE q.raw_event_id = r.id
-                      )
-                    """
-                )
-                deleted = int(cursor.rowcount)
+                candidates, deleted = cursor.fetchone()
 
-        self._compact_tables("raw_events")
+        self._compact_tables("raw_events", full=False)
         return {
-            "raw_events_candidates": candidates,
-            "raw_events_deleted": deleted,
-            "raw_events_retained": max(0, candidates - deleted),
+            "raw_events_candidates": int(candidates),
+            "raw_events_deleted": int(deleted),
+            "raw_events_retained": max(0, int(candidates) - int(deleted)),
         }
 
     def rebuild_qsos_from_raw_events(self, kerchunk_threshold_seconds: float) -> dict[str, int]:
@@ -2085,12 +2088,19 @@ class PostgresStore:
         self._compact_tables("qsos")
         return {"months": months, "qsos_deleted": int(qsos_deleted)}
 
-    def _compact_tables(self, *table_names: str) -> None:
+    def _compact_tables(self, *table_names: str, full: bool = True) -> None:
         allowed = {"raw_events", "qsos"}
         for table_name in table_names:
             if table_name not in allowed:
                 raise ValueError("unsupported table for compaction")
-            self.connection.execute(f"VACUUM (FULL, ANALYZE) {table_name}")
+            if full:
+                self.connection.execute(f"VACUUM (FULL, ANALYZE) {table_name}")
+            else:
+                # VACUUM FULL rewrites the whole table while holding an
+                # exclusive lock. Regular vacuum makes deleted space reusable
+                # and refreshes planner statistics without blocking the
+                # application for a full table rewrite.
+                self.connection.execute(f"VACUUM (ANALYZE) {table_name}")
 
     def list_users(self) -> list[dict[str, Any]]:
         with self.connection.cursor() as cursor:

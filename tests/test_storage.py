@@ -85,6 +85,45 @@ class RebuildConnection:
         self.compacted.append(query)
 
 
+class CleanupCursor:
+    def __init__(self):
+        self.executed = []
+        self.result = (5, 3)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+    def execute(self, query, params=None):
+        self.executed.append((query, params))
+
+    def fetchone(self):
+        return self.result
+
+
+class CleanupConnection:
+    def __init__(self, cursor):
+        self.cursor_instance = cursor
+        self.compacted = []
+
+    def transaction(self):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+    def cursor(self):
+        return self.cursor_instance
+
+    def execute(self, query):
+        self.compacted.append(query)
+
+
 def _qso(destination_name=None, destination_id=214):
     payload = {
         "Event": "Session-Stop",
@@ -151,6 +190,27 @@ def test_qso_rebuild_uses_set_based_sql_and_threshold():
     rebuild_params = next(params for query, params in cursor.executed if "INSERT INTO qsos" in query)
     assert "destination_id <= %s" in next(query for query, params in cursor.executed if "INSERT INTO qsos" in query)
     assert rebuild_params[-1] == 999_999
+
+
+def test_irrelevant_raw_cleanup_uses_one_delete_and_non_blocking_vacuum():
+    cursor = CleanupCursor()
+    connection = CleanupConnection(cursor)
+    store = object.__new__(PostgresStore)
+    store.connection = connection
+
+    result = store.clear_irrelevant_raw_events()
+
+    assert len(cursor.executed) == 1
+    cleanup_query = cursor.executed[0][0]
+    assert "WITH candidates AS MATERIALIZED" in cleanup_query
+    assert "DELETE FROM raw_events" in cleanup_query
+    assert "NOT EXISTS" in cleanup_query
+    assert result == {
+        "raw_events_candidates": 5,
+        "raw_events_deleted": 3,
+        "raw_events_retained": 2,
+    }
+    assert connection.compacted == ["VACUUM (ANALYZE) raw_events"]
 
 
 def test_pinned_talkgroup_backfill_uses_runtime_threshold():

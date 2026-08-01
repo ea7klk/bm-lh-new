@@ -44,6 +44,11 @@ CREATE TABLE IF NOT EXISTS qsos (
 CREATE INDEX IF NOT EXISTS qsos_start_at_idx
     ON qsos (start_at DESC);
 
+-- Supports the raw-event cleanup and the foreign-key checks performed when
+-- raw events are deleted.
+CREATE INDEX IF NOT EXISTS qsos_raw_event_id_idx
+    ON qsos (raw_event_id);
+
 CREATE INDEX IF NOT EXISTS qsos_source_id_start_at_idx
     ON qsos (source_id, start_at DESC);
 
