@@ -7,6 +7,8 @@ COPY db ./db
 COPY static ./static
 COPY scripts ./scripts
 
-RUN pip install --no-cache-dir .
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN pip install --no-cache-dir --root-user-action=ignore .
 
 ENV PYTHONUNBUFFERED=1

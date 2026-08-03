@@ -2326,7 +2326,7 @@ def admin_panel_async(request: Request) -> Response:
   const hms = value => {{ let total = Math.max(0, Math.round(Number(value || 0))); const hours=Math.floor(total/3600); total%=3600; const minutes=Math.floor(total/60); const seconds=total%60; return String(hours)+":"+String(minutes).padStart(2,"0")+":"+String(seconds).padStart(2,"0"); }};
   const getJson = url => fetch(url, {{cache:"no-store", headers:{{Accept:"application/json"}}}}).then(response => {{ if (!response.ok) throw new Error(response.status); return response.json(); }});
   const showError = ids => ids.forEach(id => setValue(id, text.error));
-  const replaceTemplate = (template, values) => Object.keys(values).reduce((result, key) => result.replaceAll("{" + key + "}", String(values[key])), template);
+  const replaceTemplate = (template, values) => Object.keys(values).reduce((result, key) => result.replaceAll("{{" + key + "}}", String(values[key])), template);
   const confirmForms = () => document.querySelectorAll("[data-confirm]").forEach(form => {{ if (form.dataset.confirmBound) return; form.dataset.confirmBound = "1"; form.addEventListener("submit", event => {{ if (form.dataset.confirm && !window.confirm(form.dataset.confirm)) event.preventDefault(); }}); }});
   function renderStats(data) {{
     const quality = data.data_quality || {{}};
@@ -2343,21 +2343,21 @@ def admin_panel_async(request: Request) -> Response:
     document.getElementById("adminQualityRows").innerHTML = rows.map(row => "<tr><td>" + escapeHtml(row[0]) + "</td><td>" + escapeHtml(row[1]) + "</td></tr>").join("");
   }}
   function renderUsers(users) {{
-    if (!users.length) {{ document.getElementById("adminUsersRows").innerHTML = "<tr><td colspan=\"7\" class=\"muted\">" + escapeHtml(text.noData) + "</td></tr>"; return; }}
+    if (!users.length) {{ document.getElementById("adminUsersRows").innerHTML = '<tr><td colspan="7" class="muted">' + escapeHtml(text.noData) + '</td></tr>'; return; }}
     document.getElementById("adminUsersRows").innerHTML = users.map(user => {{
       const active = Boolean(user.is_active); const action = active ? text.deactivate : text.activate; const status = active ? text.active : text.inactive;
-      return "<tr><td>" + escapeHtml(user.callsign) + "</td><td>" + escapeHtml(user.name) + "</td><td>" + escapeHtml(user.email) + "</td><td>" + escapeHtml(status) + "</td><td>" + escapeHtml(user.qso_count) + "</td><td>" + escapeHtml(Number(user.duration_seconds || 0).toFixed(1)) + " s</td><td>" +
-        "<form class=\"inline\" method=\"post\" action=\"/admin/users/" + user.id + "/status\"><input type=\"hidden\" name=\"active\" value=\"" + (active ? "false" : "true") + "\"><button class=\"button secondary\" type=\"submit\">" + escapeHtml(action) + "</button></form> " +
-        "<form class=\"inline\" method=\"post\" action=\"/admin/users/" + user.id + "/expire-sessions\" data-confirm=\"" + escapeHtml(text.confirmExpireSessions) + "\"><button class=\"button secondary\" type=\"submit\">" + escapeHtml(text.expireSessions) + "</button></form> " +
-        "<form class=\"inline\" method=\"post\" action=\"/admin/users/" + user.id + "/delete\" data-confirm=\"" + escapeHtml(text.confirmDelete) + "\"><button class=\"button danger\" type=\"submit\">" + escapeHtml(text.delete) + "</button></form></td></tr>";
+      return '<tr><td>' + escapeHtml(user.callsign) + '</td><td>' + escapeHtml(user.name) + '</td><td>' + escapeHtml(user.email) + '</td><td>' + escapeHtml(status) + '</td><td>' + escapeHtml(user.qso_count) + '</td><td>' + escapeHtml(Number(user.duration_seconds || 0).toFixed(1)) + ' s</td><td>' +
+        '<form class="inline" method="post" action="/admin/users/' + user.id + '/status"><input type="hidden" name="active" value="' + (active ? 'false' : 'true') + '"><button class="button secondary" type="submit">' + escapeHtml(action) + '</button></form> ' +
+        '<form class="inline" method="post" action="/admin/users/' + user.id + '/expire-sessions" data-confirm="' + escapeHtml(text.confirmExpireSessions) + '"><button class="button secondary" type="submit">' + escapeHtml(text.expireSessions) + '</button></form> ' +
+        '<form class="inline" method="post" action="/admin/users/' + user.id + '/delete" data-confirm="' + escapeHtml(text.confirmDelete) + '"><button class="button danger" type="submit">' + escapeHtml(text.delete) + '</button></form></td></tr>';
     }}).join("");
     confirmForms();
   }}
   function renderPostgres(data) {{
     setValue("adminDatabase", data.database_name); setValue("adminDatabaseSize", data.database_size); setValue("adminActiveConnections", data.active_connections); setValue("adminTotalConnections", data.total_connections);
     setValue("adminServerStarted", dateValue(data.server_started_at)); setValue("adminServerTime", dateValue(data.server_time)); setValue("adminVersion", data.version);
-    document.getElementById("adminPostgresTables").innerHTML = (data.tables || []).map(row => "<tr><td>" + escapeHtml(row.table_name) + "</td><td>" + escapeHtml(row.estimated_rows) + "</td><td>" + escapeHtml(row.total_size) + "</td></tr>").join("") || "<tr><td colspan=\"3\" class=\"muted\">" + escapeHtml(text.noTables) + "</td></tr>";
-    document.getElementById("adminPostgresConnections").innerHTML = (data.connection_states || []).map(row => "<tr><td>" + escapeHtml(row.state) + "</td><td>" + escapeHtml(row.count) + "</td></tr>").join("") || "<tr><td colspan=\"2\" class=\"muted\">" + escapeHtml(text.noConnections) + "</td></tr>";
+    document.getElementById("adminPostgresTables").innerHTML = (data.tables || []).map(row => '<tr><td>' + escapeHtml(row.table_name) + '</td><td>' + escapeHtml(row.estimated_rows) + '</td><td>' + escapeHtml(row.total_size) + '</td></tr>').join('') || '<tr><td colspan="3" class="muted">' + escapeHtml(text.noTables) + '</td></tr>';
+    document.getElementById("adminPostgresConnections").innerHTML = (data.connection_states || []).map(row => '<tr><td>' + escapeHtml(row.state) + '</td><td>' + escapeHtml(row.count) + '</td></tr>').join('') || '<tr><td colspan="2" class="muted">' + escapeHtml(text.noConnections) + '</td></tr>';
   }}
   function renderMaintenance(data) {{
     setValue("adminMaintenanceQsos", data.qsos); setValue("adminMaintenanceRaw", data.raw_events); setValue("adminMaintenanceIrrelevant", data.irrelevant_raw_events);
@@ -2369,11 +2369,11 @@ def admin_panel_async(request: Request) -> Response:
     const isRaw = kind === "raw-events"; const count = isRaw ? data.raw_events : data.qsos;
     const detail = isRaw ? String(data.raw_events) + " raw events · " + String(data.dependent_qsos) + " " + text.dependentQsos : String(data.qsos) + " QSOs";
     setValue("admin-" + kind + "-" + months + "-detail", text.eligible + ": " + detail);
-    const form = document.querySelector("form[data-kind=\"" + kind + "\"][data-months=\"" + months + "\"]");
+    const form = document.querySelector('form[data-kind="' + kind + '"][data-months="' + months + '"]');
     if (form) {{ form.dataset.confirm = replaceTemplate(isRaw ? text.rawConfirm : text.qsoConfirm, {{raw: data.raw_events, qsos: data.qsos, period: text.periods[String(months)]}}); confirmForms(); }}
   }}
   getJson("/admin/stats").then(renderStats).catch(() => showError(["adminTotalUsers","adminActiveUsers","adminQso24","adminTalkTime24","adminQualityRaw","adminQualityQsos","adminQualityPercentage","adminQualityLastEvent"]));
-  getJson("/admin/users").then(renderUsers).catch(() => document.getElementById("adminUsersRows").innerHTML = "<tr><td colspan=\"7\" class=\"muted\">" + escapeHtml(text.error) + "</td></tr>");
+  getJson("/admin/users").then(renderUsers).catch(() => document.getElementById("adminUsersRows").innerHTML = '<tr><td colspan="7" class="muted">' + escapeHtml(text.error) + '</td></tr>');
   getJson("/admin/postgres").then(renderPostgres).catch(() => showError(["adminDatabase","adminDatabaseSize","adminActiveConnections","adminTotalConnections","adminServerStarted","adminServerTime","adminVersion"]));
   getJson("/admin/maintenance").then(renderMaintenance).catch(() => showError(["adminMaintenanceQsos","adminMaintenanceRaw","adminMaintenanceIrrelevant"]));
   months.forEach(month => getJson("/admin/maintenance/" + month).then(data => {{ renderRetention("raw-events", month, data); renderRetention("qsos", month, data); }}).catch(() => {{ setValue("admin-raw-events-" + month + "-detail", text.error); setValue("admin-qsos-" + month + "-detail", text.error); }}));
