@@ -38,6 +38,7 @@ class Settings:
     )
     app_host: str = os.getenv("APP_HOST", "0.0.0.0")
     app_port: int = int(os.getenv("APP_PORT", "8000"))
+    app_timezone: str = os.getenv("APP_TIMEZONE", "Europe/Madrid")
     admin_password: str = os.getenv("ADMIN_PASSWORD", "")
     cookie_secure: bool = os.getenv("COOKIE_SECURE", "false").lower() == "true"
     session_hours: int = int(os.getenv("SESSION_HOURS", "168"))

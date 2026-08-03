@@ -13,6 +13,7 @@ from time import perf_counter
 from urllib.parse import parse_qs, quote, urlencode
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import psycopg
 from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
@@ -94,15 +95,20 @@ TIME_RANGES = {
     "6h": 6 * 60 * 60,
     "12h": 12 * 60 * 60,
     "24h": 24 * 60 * 60,
+    "today": 24 * 60 * 60,
+    "yesterday": 24 * 60 * 60,
     "2d": 2 * 24 * 60 * 60,
     "5d": 5 * 24 * 60 * 60,
     "1w": 7 * 24 * 60 * 60,
+    "lastWeek": 7 * 24 * 60 * 60,
     "2w": 14 * 24 * 60 * 60,
     "1M": 30 * 24 * 60 * 60,
+    "lastMonth": 31 * 24 * 60 * 60,
     "2M": 60 * 24 * 60 * 60,
     "3M": 90 * 24 * 60 * 60,
 }
-AUTHENTICATED_TIME_RANGES = frozenset({"2w", "1M", "2M", "3M"})
+CALENDAR_TIME_RANGES = frozenset({"today", "yesterday", "lastWeek", "lastMonth"})
+AUTHENTICATED_TIME_RANGES = frozenset({"2w", "1M", "lastMonth", "2M", "3M"})
 
 store: PostgresStore | None = None
 
@@ -179,13 +185,54 @@ def get_store() -> PostgresStore:
     return store
 
 
+def _calendar_timezone() -> Any:
+    try:
+        return ZoneInfo(settings.app_timezone)
+    except ZoneInfoNotFoundError:
+        return UTC
+
+
+def calendar_range_bounds(time_range: str, now: datetime | None = None) -> tuple[datetime, datetime] | None:
+    if time_range not in CALENDAR_TIME_RANGES:
+        return None
+    local_now = (now or datetime.now(tz=UTC)).astimezone(_calendar_timezone())
+    today = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if time_range == "today":
+        start = today
+        end = local_now
+    elif time_range == "yesterday":
+        start = today - timedelta(days=1)
+        end = today
+    elif time_range == "lastWeek":
+        this_monday = today - timedelta(days=today.weekday())
+        end = this_monday
+        start = end - timedelta(days=7)
+    else:
+        end = today.replace(day=1)
+        start = (end - timedelta(days=1)).replace(day=1)
+    return start.astimezone(UTC), end.astimezone(UTC)
+
+
 def start_time(time_range: str) -> datetime:
+    bounds = calendar_range_bounds(time_range)
+    if bounds is not None:
+        return bounds[0]
     return datetime.now(tz=UTC) - timedelta(seconds=TIME_RANGES.get(time_range, TIME_RANGES["5m"]))
+
+
+def end_time(time_range: str) -> datetime | None:
+    bounds = calendar_range_bounds(time_range)
+    return bounds[1] if bounds is not None else None
 
 
 def histogram_bucket_seconds(time_range: str) -> int:
     """Choose readable histogram bands for the selected dashboard period."""
-    seconds = TIME_RANGES.get(time_range, TIME_RANGES["5m"])
+    bounds = calendar_range_bounds(time_range)
+    seconds = (
+        int((bounds[1] - bounds[0]).total_seconds())
+        if bounds is not None
+        else TIME_RANGES.get(time_range, TIME_RANGES["5m"])
+    )
     if seconds <= 15 * 60:
         return 60
     if seconds <= 2 * 60 * 60:
@@ -290,7 +337,8 @@ def dashboard(request: Request = None) -> HTMLResponse:
     locale = request_locale(request) if request is not None else "en"
     extended_range_options = (
         '<option value="2w" data-auth-required>Last 14 days</option>'
-        '<option value="1M" data-auth-required>Last month</option>'
+        '<option value="1M" data-auth-required>Last 30 days</option>'
+        '<option value="lastMonth" data-auth-required>Last month</option>'
         '<option value="2M" data-auth-required>Last 2 months</option>'
         '<option value="3M" data-auth-required>Last 3 months</option>'
         if user is not None
@@ -414,15 +462,18 @@ def _admin_datetime(value: Any) -> str:
 def _subpage_account_links(locale: str, user: dict[str, Any] | None = None) -> str:
     if user is None:
         return (
+            f'<a href="/">{_escape(translate(locale, "common.dashboard"))}</a>'
             f'<a href="/user/login">{_escape(translate(locale, "home.login"))}</a>'
             f'<a href="/user/register">{_escape(translate(locale, "home.register"))}</a>'
             f'<a href="/user/profile">{_escape(translate(locale, "home.myProfile"))}</a>'
             f'<a href="/admin">{_escape(translate(locale, "home.admin"))}</a>'
         )
     return (
+        f'<a href="/">{_escape(translate(locale, "common.dashboard"))}</a>'
         f'<a href="/user/profile">{_escape(user["callsign"])}</a>'
         f'<a href="/user/live-qsos">{_escape(translate(locale, "live.title"))}</a>'
         f'<a href="/user/reports">{_escape(translate(locale, "home.reports"))}</a>'
+        f'<a href="/admin">{_escape(translate(locale, "home.admin"))}</a>'
         f'<form class="account-logout" method="post" action="/user/logout">'
         f'<button type="submit">{_escape(translate(locale, "user.logout"))}</button></form>'
     )
@@ -466,7 +517,7 @@ def _account_page_with_metrics(
 <style>
 body{{margin:0;min-height:100vh;padding:22px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#1f2937}}
 .shell{{max-width:1440px;margin:auto}}.panel,.card{{background:#fff;border-radius:14px;box-shadow:0 18px 55px #1e153a33;margin-bottom:20px}}.card{{padding:28px}}
-.hero{{padding:27px 30px;text-align:center}}.hero h1{{margin:0 0 8px;font-size:clamp(26px,4vw,38px);letter-spacing:-.03em}}.hero p{{margin:0;color:#6b7280}}.live{{display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:5px 11px;border-radius:999px;background:#ecfdf3;color:#15803d;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}}.live i{{width:8px;height:8px;background:#22c55e;border-radius:50%;box-shadow:0 0 0 4px #bbf7d0;display:inline-block}}.account-links{{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:8px;margin-top:15px;font-size:13px}}.account-links a,.account-logout button{{display:inline-block;padding:8px 12px;border:0;border-radius:8px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font:inherit;font-weight:750;text-decoration:none;cursor:pointer}}.account-links a:hover,.account-logout button:hover{{filter:brightness(1.08)}}.account-logout{{display:inline;margin:0}}.subpage-nav{{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}}.subpage-nav .language{{color:#fff}}
+.hero{{padding:27px 30px;text-align:center}}.hero h1{{margin:0 0 8px;font-size:clamp(26px,4vw,38px);letter-spacing:-.03em}}.hero p{{margin:0;color:#6b7280}}.live{{display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:5px 11px;border-radius:999px;background:#ecfdf3;color:#15803d;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}}.live i{{width:8px;height:8px;background:#22c55e;border-radius:50%;box-shadow:0 0 0 4px #bbf7d0;display:inline-block}}.account-links{{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:8px;margin-top:15px;font-size:13px}}.account-links a,.account-logout button{{display:inline-block;padding:8px 12px;border:0;border-radius:8px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font:inherit;font-weight:750;text-decoration:none;cursor:pointer}}.account-links a:hover,.account-logout button:hover{{filter:brightness(1.08)}}.account-logout{{display:inline;margin:0}}.subpage-nav{{display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}}.subpage-nav .language{{color:#fff}}
 h1,h2{{margin-top:0}}h1{{text-align:center}}.muted{{color:#6b7280}}.nav{{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;gap:12px;flex-wrap:wrap}}
 .nav a,.button{{display:inline-block;padding:9px 14px;border-radius:8px;border:0;background:linear-gradient(135deg,#667eea,#764ba2);color:white;text-decoration:none;font-weight:700;cursor:pointer}}
 .nav a.secondary,.button.secondary{{background:#f1f3ff;color:#5457bd}}.language{{display:flex;align-items:center;gap:7px;color:#fff;font-size:13px;font-weight:700}}.language select{{padding:7px 9px;border:0;border-radius:7px;background:#fff;color:#374151;font:inherit}}.form{{max-width:520px;margin:auto}}label{{display:block;margin:13px 0 5px;font-size:13px;font-weight:700;color:#4b5563}}input{{width:100%;height:42px;padding:0 11px;border:2px solid #e5e7eb;border-radius:8px;box-sizing:border-box;font:inherit}}input:focus{{outline:0;border-color:#667eea}}.form .button{{margin-top:18px;width:100%}}
@@ -476,7 +527,7 @@ h1,h2{{margin-top:0}}h1{{text-align:center}}.muted{{color:#6b7280}}.nav{{display
 table{{width:100%;border-collapse:collapse}}th,td{{padding:11px;border-bottom:1px solid #e8eaf0;text-align:left;font-size:13px}}th{{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}}.table-wrap{{overflow:auto;border:1px solid #e8eaf0;border-radius:9px}}.inline{{display:inline}}.danger{{background:#dc3545}}.warning{{color:#b45309;font-weight:700}}
 .cookie-consent{{position:fixed;z-index:1000;left:16px;right:16px;bottom:16px;display:flex;justify-content:center}}.cookie-consent[hidden]{{display:none}}.cookie-consent-card{{max-width:760px;width:100%;padding:20px 22px;background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 18px 55px #1e153a55}}.cookie-consent-card h2,.cookie-consent-card h3{{margin:0 0 8px}}.cookie-consent-card p{{margin:0;color:#4b5563;line-height:1.5;font-size:14px}}.cookie-consent-actions{{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:15px}}.cookie-consent-actions .button{{width:auto;margin:0}}.cookie-settings-link,.cookie-settings-footer{{border:0;background:none;color:#5457bd;text-decoration:underline;cursor:pointer;font:inherit;font-size:13px}}.cookie-settings{{margin-top:15px;padding-top:15px;border-top:1px solid #e5e7eb}}.cookie-option{{display:flex;align-items:flex-start;gap:9px;margin:11px 0;font-weight:400}}.cookie-option input{{width:auto;height:auto;margin-top:3px}}.cookie-option span{{display:flex;flex-direction:column;gap:3px}}.cookie-option small{{color:#6b7280;font-weight:400;line-height:1.4}}.cookie-settings-footer{{display:block;margin:24px auto 0;color:#fff}}.page-footer{{color:#fff;text-align:center;font-size:12px;line-height:1.6;padding:4px 0 8px}}.page-footer a{{color:#fff}}
 @media(max-width:700px){{body{{padding:10px}}.card{{padding:20px}}.stats{{grid-template-columns:repeat(2,1fr)}}.charts{{grid-template-columns:1fr}}table{{min-width:760px}}}}
-</style></head><body><main class="shell"><header class="panel hero"><h1>🔊 {_escape(translate(locale, "home.title"))}</h1><p>{_escape(translate(locale, "home.subtitle"))}</p><span class="live"><i></i> {_escape(translate(locale, "home.liveFeed"))}</span><div class="account-links">{_subpage_account_links(locale, user)}</div></header><div class="subpage-nav"><a class="button secondary" href="/">{_escape(translate(locale, "common.dashboard"))}</a><label class="language">{_escape(translate(locale, "common.language"))}<select id="language">{language_options}</select></label></div>{content}{consent_markup}<footer class="page-footer"><span>{_escape(metrics)}</span> · <a href="/">{_escape(translate(locale, "common.dashboard"))}</a></footer></main><script>document.getElementById('language').addEventListener('change',function(){{document.cookie='{LANGUAGE_COOKIE}='+encodeURIComponent(this.value)+'; Max-Age={LANGUAGE_COOKIE_MAX_AGE}; Path=/; SameSite=Lax';window.location.reload();}});</script>{cookie_consent_script(analytics_enabled)}</body></html>
+</style></head><body><main class="shell"><header class="panel hero"><h1>🔊 {_escape(translate(locale, "home.title"))}</h1><p>{_escape(translate(locale, "home.subtitle"))}</p><span class="live"><i></i> {_escape(translate(locale, "home.liveFeed"))}</span><div class="account-links">{_subpage_account_links(locale, user)}</div></header><div class="subpage-nav"><label class="language">{_escape(translate(locale, "common.language"))}<select id="language">{language_options}</select></label></div>{content}{consent_markup}<footer class="page-footer"><span>{_escape(metrics)}</span></footer></main><script>document.getElementById('language').addEventListener('change',function(){{document.cookie='{LANGUAGE_COOKIE}='+encodeURIComponent(this.value)+'; Max-Age={LANGUAGE_COOKIE_MAX_AGE}; Path=/; SameSite=Lax';window.location.reload();}});</script>{cookie_consent_script(analytics_enabled)}</body></html>
 """
     )
 
@@ -1346,14 +1397,27 @@ def _report_page(
     locale = request_locale(request)
     query_started = perf_counter()
     store = get_store()
-    report = store.user_report(
-        callsign,
-        start_time(time_range),
-        continent,
-        country,
-        talkgroups,
-        histogram_bucket_seconds(time_range),
-    )
+    report_start = start_time(time_range)
+    report_end = end_time(time_range)
+    if report_end is None:
+        report = store.user_report(
+            callsign,
+            report_start,
+            continent,
+            country,
+            talkgroups,
+            histogram_bucket_seconds(time_range),
+        )
+    else:
+        report = store.user_report(
+            callsign,
+            report_start,
+            continent,
+            country,
+            talkgroups,
+            histogram_bucket_seconds(time_range),
+            end_time=report_end,
+        )
     if hasattr(store, "active_talkgroups"):
         talkgroup_selector_rows = [
             {
@@ -1361,8 +1425,14 @@ def _report_page(
                 "name": row["label"],
                 "qso_count": row["count"],
             }
-            for row in store.active_talkgroups(
-                start_time(time_range), continent, country
+            for row in (
+                store.active_talkgroups(
+                    start_time(time_range), continent, country
+                )
+                if report_end is None
+                else store.active_talkgroups(
+                    report_start, continent, country, end_time=report_end
+                )
             )
         ]
     else:
@@ -1381,9 +1451,10 @@ def _report_page(
     range_keys = {
         "5m": "home.last5m", "15m": "home.last15m", "30m": "home.last30m",
         "1h": "home.last1h", "2h": "home.last2h", "6h": "home.last6h",
-        "12h": "home.last12h", "24h": "home.last24h", "2d": "home.last2d",
-        "5d": "home.last5d", "1w": "home.last1w", "2w": "home.last2w",
-        "1M": "home.last1M", "2M": "home.last2M", "3M": "home.last3M",
+        "12h": "home.last12h", "24h": "home.last24h", "today": "home.today", "yesterday": "home.yesterday",
+        "2d": "home.last2d", "5d": "home.last5d", "1w": "home.last1w",
+        "lastWeek": "home.lastWeek", "2w": "home.last2w", "1M": "home.last1M",
+        "lastMonth": "home.lastMonth", "2M": "home.last2M", "3M": "home.last3M",
     }
     range_options = "".join(
         f'<option value="{key}"{" selected" if key == time_range else ""}>'
@@ -1519,14 +1590,27 @@ def _load_user_report(
     user = _current_user(request)
     if user is None:
         return None, None
-    report = get_store().user_report(
-        callsign,
-        start_time(time_range),
-        continent,
-        country,
-        talkgroups,
-        histogram_bucket_seconds(time_range),
-    )
+    report_start = start_time(time_range)
+    report_end = end_time(time_range)
+    if report_end is None:
+        report = get_store().user_report(
+            callsign,
+            report_start,
+            continent,
+            country,
+            talkgroups,
+            histogram_bucket_seconds(time_range),
+        )
+    else:
+        report = get_store().user_report(
+            callsign,
+            report_start,
+            continent,
+            country,
+            talkgroups,
+            histogram_bucket_seconds(time_range),
+            end_time=report_end,
+        )
     return user, _limit_report_entries(report)
 
 
@@ -2059,8 +2143,26 @@ def _admin_retention_row(
 <form method="post" action="/admin/maintenance/{kind}/{months}" onsubmit="return window.confirm({confirm_json})"><button class="button danger" type="submit">{_escape(translate(locale, "adminMaintenance.deleteButton"))}</button></form></div>'''
 
 
-@app.get("/admin", response_class=HTMLResponse)
-def admin_panel(request: Request) -> Response:
+def _admin_async_retention_rows(locale: str, kind: str) -> str:
+    rows = []
+    for months in ADMIN_RETENTION_MONTHS:
+        rows.append(
+            f'<div class="nav admin-retention-row" style="margin:10px 0;align-items:center">'
+            f'<div><strong>{_escape(translate(locale, "adminMaintenance.olderThan"))} '
+            f'{_escape(_admin_retention_period(locale, months))}</strong><br>'
+            f'<span class="muted" id="admin-{kind}-{months}-detail">'
+            f'{_escape(translate(locale, "adminMaintenance.eligible"))}: …</span></div>'
+            f'<form method="post" action="/admin/maintenance/{kind}/{months}" '
+            f'data-retention-form data-kind="{kind}" data-months="{months}">'
+            f'<button class="button danger" type="submit">'
+            f'{_escape(translate(locale, "adminMaintenance.deleteButton"))}</button></form></div>'
+        )
+    return "".join(rows)
+
+
+# Legacy synchronous renderer retained temporarily for reference; the active
+# route and public helper are provided by admin_panel_async below.
+def _legacy_admin_panel(request: Request) -> Response:
     locale = request_locale(request)
     if not _admin_allowed(request):
         return RedirectResponse("/admin/login", status_code=303)
@@ -2133,3 +2235,159 @@ def admin_panel(request: Request) -> Response:
         records_retrieved=len(users),
         query_seconds=query_seconds,
     )
+
+
+# Async admin route implementation follows.
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_panel_async(request: Request) -> Response:
+    """Return a fast admin shell; expensive sections hydrate independently."""
+    locale = request_locale(request)
+    if not _admin_allowed(request):
+        return RedirectResponse("/admin/login", status_code=303)
+
+    def tr(key: str) -> str:
+        return translate(locale, key)
+
+    client_text = {
+        "loading": "…",
+        "error": "—",
+        "eligible": tr("adminMaintenance.eligible"),
+        "active": tr("admin.active"),
+        "inactive": tr("admin.inactive"),
+        "activate": tr("admin.activate"),
+        "deactivate": tr("admin.deactivate"),
+        "expireSessions": tr("admin.expireSessions"),
+        "delete": tr("admin.delete"),
+        "confirmDelete": tr("admin.confirmDelete"),
+        "confirmExpireSessions": tr("admin.confirmExpireSessions"),
+        "noData": tr("admin.registeredUsers"),
+        "noTables": tr("admin.noTables"),
+        "noConnections": tr("admin.noConnections"),
+        "rawVsQso": tr("admin.rawVsQso"),
+        "kerchunksFiltered": tr("admin.kerchunksFiltered"),
+        "duplicateRawEvents": tr("admin.duplicateRawEvents"),
+        "invalidSessionStops": tr("admin.invalidSessionStops"),
+        "negativeDurations": tr("admin.negativeDurations"),
+        "longDurations": tr("admin.longDurations"),
+        "averageIngestionDelay": tr("admin.averageIngestionDelay"),
+        "p95IngestionDelay": tr("admin.p95IngestionDelay"),
+        "maxIngestionDelay": tr("admin.maxIngestionDelay"),
+        "invalidIngestionDelays": tr("admin.invalidIngestionDelays"),
+        "negativeIngestionDelays": tr("admin.negativeIngestionDelays"),
+        "eventLag": tr("admin.eventLag"),
+        "collectorHeartbeatLag": tr("admin.collectorHeartbeatLag"),
+        "rebuildConfirm": tr("adminMaintenance.rebuildConfirm"),
+        "irrelevantRawConfirm": tr("adminMaintenance.irrelevantRawConfirm"),
+        "rawConfirm": tr("adminMaintenance.rawConfirm"),
+        "qsoConfirm": tr("adminMaintenance.qsoConfirm"),
+        "dependentQsos": tr("adminMaintenance.dependentQsos"),
+        "periods": {str(months): _admin_retention_period(locale, months) for months in ADMIN_RETENTION_MONTHS},
+    }
+    client_text_json = json.dumps(client_text, ensure_ascii=False).replace("</", "<\\/")
+    loading = _escape(client_text["loading"])
+    maintenance_notice = _admin_maintenance_notice(request, locale)
+    rebuild_confirm = _escape(json.dumps(tr("adminMaintenance.rebuildConfirm")))
+    irrelevant_confirm = _escape(json.dumps(tr("adminMaintenance.irrelevantRawConfirm").replace("{count}", "0")))
+    content = f"""
+<style>
+.admin-loading{{color:#9ca3af;animation:admin-pulse 1.2s ease-in-out infinite alternate}}
+@keyframes admin-pulse{{from{{opacity:.45}}to{{opacity:1}}}}
+.admin-retention-row{{border-bottom:1px solid #e8eaf0;padding-bottom:10px}}
+</style>
+<section class="card"><div class="nav"><h1 style="margin:0">{_escape(tr("admin.title"))}</h1><form method="post" action="/admin/logout"><button class="button secondary" type="submit">{_escape(tr("admin.logout"))}</button></form></div>
+<div class="stats"><div class="stat"><small>{_escape(tr("admin.registeredUsers"))}</small><strong id="adminTotalUsers" class="admin-loading">{loading}</strong></div><div class="stat"><small>{_escape(tr("admin.activeUsers"))}</small><strong id="adminActiveUsers" class="admin-loading">{loading}</strong></div><div class="stat"><small>{_escape(tr("admin.qso24"))}</small><strong id="adminQso24" class="admin-loading">{loading}</strong></div><div class="stat"><small>{_escape(tr("admin.talkTime24"))}</small><strong id="adminTalkTime24" class="admin-loading">{loading}</strong></div></div></section>
+{maintenance_notice}
+<section class="card"><h2>{_escape(tr("admin.dataQuality"))}</h2><p class="muted">{_escape(tr("admin.dataQualityDescription"))}</p>
+<div class="stats data-quality-stats"><div class="stat"><small>{_escape(tr("admin.rawEvents"))}</small><strong id="adminQualityRaw" class="admin-loading">{loading}</strong></div><div class="stat"><small>{_escape(tr("admin.storedQsos"))}</small><strong id="adminQualityQsos" class="admin-loading">{loading}</strong></div><div class="stat"><small>{_escape(tr("admin.displayablePercentage"))}</small><strong id="adminQualityPercentage" class="admin-loading">{loading}</strong></div><div class="stat"><small>{_escape(tr("admin.lastEvent"))}</small><strong id="adminQualityLastEvent" class="admin-loading">{loading}</strong></div></div>
+<div class="table-wrap"><table><thead><tr><th>{_escape(tr("admin.dataQualityMetric"))}</th><th>{_escape(tr("admin.value"))}</th></tr></thead><tbody id="adminQualityRows"><tr><td colspan="2" class="muted">{loading}</td></tr></tbody></table></div></section>
+<section class="card"><h2>{_escape(tr("admin.registeredUsers"))}</h2><p class="muted">{_escape(tr("admin.userMetrics"))}</p><div class="table-wrap"><table><thead><tr><th>{_escape(tr("user.callsign"))}</th><th>{_escape(tr("user.name"))}</th><th>{_escape(tr("user.email"))}</th><th>{_escape(tr("admin.status"))}</th><th>{_escape(tr("user.qsoCount"))}</th><th>{_escape(tr("home.talkTime"))}</th><th>{_escape(tr("admin.actions"))}</th></tr></thead><tbody id="adminUsersRows"><tr><td colspan="7" class="muted">{loading}</td></tr></tbody></table></div></section>
+<section class="card"><div class="nav"><h2 style="margin:0">{_escape(tr("admin.postgresql"))}</h2><form method="post" action="/admin/postgres/analyze"><button class="button secondary" type="submit">{_escape(tr("admin.refreshPlanner"))}</button></form></div>
+<div class="stats"><div class="stat"><small>{_escape(tr("admin.database"))}</small><strong id="adminDatabase" class="admin-loading">{loading}</strong></div><div class="stat"><small>{_escape(tr("admin.databaseSize"))}</small><strong id="adminDatabaseSize" class="admin-loading">{loading}</strong></div><div class="stat"><small>{_escape(tr("admin.activeConnections"))}</small><strong id="adminActiveConnections" class="admin-loading">{loading}</strong></div><div class="stat"><small>{_escape(tr("admin.totalConnections"))}</small><strong id="adminTotalConnections" class="admin-loading">{loading}</strong></div></div>
+<p class="muted"><strong>{_escape(tr("admin.serverStarted"))}:</strong> <span id="adminServerStarted" class="admin-loading">{loading}</span> · <strong>{_escape(tr("admin.serverTime"))}:</strong> <span id="adminServerTime" class="admin-loading">{loading}</span></p>
+<p class="muted"><strong>{_escape(tr("admin.version"))}:</strong> <span id="adminVersion" class="admin-loading">{loading}</span></p>
+<div class="charts"><div><h3>{_escape(tr("admin.applicationTables"))}</h3><div class="table-wrap"><table><thead><tr><th>{_escape(tr("admin.database"))}</th><th>{_escape(tr("admin.estimatedRows"))}</th><th>{_escape(tr("admin.totalSize"))}</th></tr></thead><tbody id="adminPostgresTables"><tr><td colspan="3" class="muted">{loading}</td></tr></tbody></table></div></div><div><h3>{_escape(tr("admin.connectionStates"))}</h3><div class="table-wrap"><table><thead><tr><th>{_escape(tr("admin.state"))}</th><th>{_escape(tr("admin.connections"))}</th></tr></thead><tbody id="adminPostgresConnections"><tr><td colspan="2" class="muted">{loading}</td></tr></tbody></table></div></div></div></section>
+<section class="card"><h2>{_escape(tr("adminMaintenance.title"))}</h2><p class="muted">{_escape(tr("adminMaintenance.description"))}</p>
+<div class="card" style="background:#f8f9ff;box-shadow:none;margin:0 0 16px;padding:18px"><h3>{_escape(tr("adminMaintenance.rebuildTitle"))}</h3><p class="muted">{_escape(tr("adminMaintenance.rebuildDescription"))}</p><p><strong>{_escape(tr("adminMaintenance.currentQsos"))}:</strong> <span id="adminMaintenanceQsos" class="admin-loading">{loading}</span> · <strong>{_escape(tr("adminMaintenance.rawEventsScanned"))}:</strong> <span id="adminMaintenanceRaw" class="admin-loading">{loading}</span></p><form method="post" action="/admin/maintenance/rebuild-qsos" data-confirm="{rebuild_confirm}"><button class="button" type="submit">{_escape(tr("adminMaintenance.rebuildButton"))}</button></form></div>
+<div class="card" style="background:#fff7ed;box-shadow:none;margin:0 0 16px;padding:18px"><h3>{_escape(tr("adminMaintenance.irrelevantRawTitle"))}</h3><p class="muted">{_escape(tr("adminMaintenance.irrelevantRawDescription"))}</p><p><strong>{_escape(tr("adminMaintenance.irrelevantRawEligible"))}:</strong> <span id="adminMaintenanceIrrelevant" class="admin-loading">{loading}</span></p><form method="post" action="/admin/maintenance/irrelevant-raw-events" data-confirm="{irrelevant_confirm}"><button class="button danger" type="submit">{_escape(tr("adminMaintenance.deleteButton"))}</button></form></div>
+<h3>{_escape(tr("adminMaintenance.rawTitle"))}</h3><div id="adminRawRetention">{_admin_async_retention_rows(locale, "raw-events")}</div>
+<h3>{_escape(tr("adminMaintenance.qsoTitle"))}</h3><div id="adminQsoRetention">{_admin_async_retention_rows(locale, "qsos")}</div>
+</section>
+<script>
+(() => {{
+  const text = {client_text_json};
+  const months = {list(ADMIN_RETENTION_MONTHS)!r};
+  const locale = document.documentElement.lang || "en";
+  const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}}[character]));
+  const setValue = (id, value) => {{ const element = document.getElementById(id); if (element) {{ element.textContent = value ?? text.error; element.classList.remove("admin-loading"); }} }};
+  const dateValue = value => value ? new Date(value).toLocaleString(locale) : "—";
+  const secondsValue = value => value == null ? "—" : String(Number(value).toFixed(1)) + " s";
+  const hms = value => {{ let total = Math.max(0, Math.round(Number(value || 0))); const hours=Math.floor(total/3600); total%=3600; const minutes=Math.floor(total/60); const seconds=total%60; return String(hours)+":"+String(minutes).padStart(2,"0")+":"+String(seconds).padStart(2,"0"); }};
+  const getJson = url => fetch(url, {{cache:"no-store", headers:{{Accept:"application/json"}}}}).then(response => {{ if (!response.ok) throw new Error(response.status); return response.json(); }});
+  const showError = ids => ids.forEach(id => setValue(id, text.error));
+  const replaceTemplate = (template, values) => Object.keys(values).reduce((result, key) => result.replaceAll("{" + key + "}", String(values[key])), template);
+  const confirmForms = () => document.querySelectorAll("[data-confirm]").forEach(form => {{ if (form.dataset.confirmBound) return; form.dataset.confirmBound = "1"; form.addEventListener("submit", event => {{ if (form.dataset.confirm && !window.confirm(form.dataset.confirm)) event.preventDefault(); }}); }});
+  function renderStats(data) {{
+    const quality = data.data_quality || {{}};
+    setValue("adminTotalUsers", data.total_users); setValue("adminActiveUsers", data.active_users); setValue("adminQso24", data.qso_count); setValue("adminTalkTime24", hms(data.duration_seconds));
+    setValue("adminQualityRaw", quality.raw_events); setValue("adminQualityQsos", quality.stored_qsos); setValue("adminQualityPercentage", String(quality.displayable_qso_percentage ?? "—") + "%"); setValue("adminQualityLastEvent", dateValue(quality.last_event_at));
+    const rows = [
+      [text.rawVsQso, String(quality.raw_events ?? "—") + " / " + String(quality.stored_qsos ?? "—")],
+      [text.kerchunksFiltered, quality.kerchunks_filtered], [text.duplicateRawEvents, quality.duplicate_raw_events], [text.invalidSessionStops, quality.invalid_session_stops],
+      [text.negativeDurations, quality.negative_durations], [text.longDurations, quality.unusually_long_durations], [text.averageIngestionDelay, secondsValue(quality.average_ingestion_delay_seconds)],
+      [text.p95IngestionDelay, secondsValue(quality.p95_ingestion_delay_seconds)], [text.maxIngestionDelay, secondsValue(quality.max_ingestion_delay_seconds)],
+      [text.invalidIngestionDelays, quality.invalid_ingestion_delays], [text.negativeIngestionDelays, quality.negative_ingestion_delays],
+      [text.eventLag, secondsValue(quality.collector_lag_seconds)], [text.collectorHeartbeatLag, secondsValue(quality.collector_heartbeat_lag_seconds)]
+    ];
+    document.getElementById("adminQualityRows").innerHTML = rows.map(row => "<tr><td>" + escapeHtml(row[0]) + "</td><td>" + escapeHtml(row[1]) + "</td></tr>").join("");
+  }}
+  function renderUsers(users) {{
+    if (!users.length) {{ document.getElementById("adminUsersRows").innerHTML = "<tr><td colspan=\"7\" class=\"muted\">" + escapeHtml(text.noData) + "</td></tr>"; return; }}
+    document.getElementById("adminUsersRows").innerHTML = users.map(user => {{
+      const active = Boolean(user.is_active); const action = active ? text.deactivate : text.activate; const status = active ? text.active : text.inactive;
+      return "<tr><td>" + escapeHtml(user.callsign) + "</td><td>" + escapeHtml(user.name) + "</td><td>" + escapeHtml(user.email) + "</td><td>" + escapeHtml(status) + "</td><td>" + escapeHtml(user.qso_count) + "</td><td>" + escapeHtml(Number(user.duration_seconds || 0).toFixed(1)) + " s</td><td>" +
+        "<form class=\"inline\" method=\"post\" action=\"/admin/users/" + user.id + "/status\"><input type=\"hidden\" name=\"active\" value=\"" + (active ? "false" : "true") + "\"><button class=\"button secondary\" type=\"submit\">" + escapeHtml(action) + "</button></form> " +
+        "<form class=\"inline\" method=\"post\" action=\"/admin/users/" + user.id + "/expire-sessions\" data-confirm=\"" + escapeHtml(text.confirmExpireSessions) + "\"><button class=\"button secondary\" type=\"submit\">" + escapeHtml(text.expireSessions) + "</button></form> " +
+        "<form class=\"inline\" method=\"post\" action=\"/admin/users/" + user.id + "/delete\" data-confirm=\"" + escapeHtml(text.confirmDelete) + "\"><button class=\"button danger\" type=\"submit\">" + escapeHtml(text.delete) + "</button></form></td></tr>";
+    }}).join("");
+    confirmForms();
+  }}
+  function renderPostgres(data) {{
+    setValue("adminDatabase", data.database_name); setValue("adminDatabaseSize", data.database_size); setValue("adminActiveConnections", data.active_connections); setValue("adminTotalConnections", data.total_connections);
+    setValue("adminServerStarted", dateValue(data.server_started_at)); setValue("adminServerTime", dateValue(data.server_time)); setValue("adminVersion", data.version);
+    document.getElementById("adminPostgresTables").innerHTML = (data.tables || []).map(row => "<tr><td>" + escapeHtml(row.table_name) + "</td><td>" + escapeHtml(row.estimated_rows) + "</td><td>" + escapeHtml(row.total_size) + "</td></tr>").join("") || "<tr><td colspan=\"3\" class=\"muted\">" + escapeHtml(text.noTables) + "</td></tr>";
+    document.getElementById("adminPostgresConnections").innerHTML = (data.connection_states || []).map(row => "<tr><td>" + escapeHtml(row.state) + "</td><td>" + escapeHtml(row.count) + "</td></tr>").join("") || "<tr><td colspan=\"2\" class=\"muted\">" + escapeHtml(text.noConnections) + "</td></tr>";
+  }}
+  function renderMaintenance(data) {{
+    setValue("adminMaintenanceQsos", data.qsos); setValue("adminMaintenanceRaw", data.raw_events); setValue("adminMaintenanceIrrelevant", data.irrelevant_raw_events);
+    const rebuild = document.querySelector('form[action="/admin/maintenance/rebuild-qsos"]'); const irrelevant = document.querySelector('form[action="/admin/maintenance/irrelevant-raw-events"]');
+    if (rebuild) rebuild.dataset.confirm = text.rebuildConfirm;
+    if (irrelevant) irrelevant.dataset.confirm = replaceTemplate(text.irrelevantRawConfirm, {{count: data.irrelevant_raw_events}});
+  }}
+  function renderRetention(kind, months, data) {{
+    const isRaw = kind === "raw-events"; const count = isRaw ? data.raw_events : data.qsos;
+    const detail = isRaw ? String(data.raw_events) + " raw events · " + String(data.dependent_qsos) + " " + text.dependentQsos : String(data.qsos) + " QSOs";
+    setValue("admin-" + kind + "-" + months + "-detail", text.eligible + ": " + detail);
+    const form = document.querySelector("form[data-kind=\"" + kind + "\"][data-months=\"" + months + "\"]");
+    if (form) {{ form.dataset.confirm = replaceTemplate(isRaw ? text.rawConfirm : text.qsoConfirm, {{raw: data.raw_events, qsos: data.qsos, period: text.periods[String(months)]}}); confirmForms(); }}
+  }}
+  getJson("/admin/stats").then(renderStats).catch(() => showError(["adminTotalUsers","adminActiveUsers","adminQso24","adminTalkTime24","adminQualityRaw","adminQualityQsos","adminQualityPercentage","adminQualityLastEvent"]));
+  getJson("/admin/users").then(renderUsers).catch(() => document.getElementById("adminUsersRows").innerHTML = "<tr><td colspan=\"7\" class=\"muted\">" + escapeHtml(text.error) + "</td></tr>");
+  getJson("/admin/postgres").then(renderPostgres).catch(() => showError(["adminDatabase","adminDatabaseSize","adminActiveConnections","adminTotalConnections","adminServerStarted","adminServerTime","adminVersion"]));
+  getJson("/admin/maintenance").then(renderMaintenance).catch(() => showError(["adminMaintenanceQsos","adminMaintenanceRaw","adminMaintenanceIrrelevant"]));
+  months.forEach(month => getJson("/admin/maintenance/" + month).then(data => {{ renderRetention("raw-events", month, data); renderRetention("qsos", month, data); }}).catch(() => {{ setValue("admin-raw-events-" + month + "-detail", text.error); setValue("admin-qsos-" + month + "-detail", text.error); }}));
+  confirmForms();
+}})();
+</script>
+"""
+    return _account_page_with_metrics(
+        tr("admin.title"),
+        content,
+        locale,
+        records_retrieved=0,
+        query_seconds=0,
+    )
+
+
+admin_panel = admin_panel_async

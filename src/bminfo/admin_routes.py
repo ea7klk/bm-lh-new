@@ -54,6 +54,27 @@ def admin_postgres(request: Request) -> JSONResponse:
     return JSONResponse(jsonable_encoder(web.get_store().postgres_overview()))
 
 
+@router.get("/admin/maintenance")
+def admin_maintenance(request: Request) -> JSONResponse:
+    web = _web()
+    if not web._admin_allowed(request):
+        return _authentication_required()
+    return JSONResponse(jsonable_encoder(web.get_store().maintenance_overview()))
+
+
+@router.get("/admin/maintenance/{months}")
+def admin_retention(months: int, request: Request) -> JSONResponse:
+    web = _web()
+    if not web._admin_allowed(request):
+        return _authentication_required()
+    if months not in web.ADMIN_RETENTION_MONTHS:
+        return JSONResponse(
+            {"error": "retention period must be 1, 2, 3, or 6 months"},
+            status_code=400,
+        )
+    return JSONResponse(jsonable_encoder(web.get_store().retention_counts(months)))
+
+
 @router.post("/admin/postgres/analyze")
 def admin_postgres_analyze(request: Request) -> Response:
     web = _web()

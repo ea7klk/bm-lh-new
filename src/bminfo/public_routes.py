@@ -96,17 +96,33 @@ def public_stats(
     )
     if access_error is not None:
         return access_error
-    summary = web.get_store().summary(
-        web.start_time(timeRange), continent, country, talkgroup, callsign
-    )
-    histogram = web.get_store().activity_histogram(
-        web.start_time(timeRange),
-        web.histogram_bucket_seconds(timeRange),
-        continent,
-        country,
-        talkgroup,
-        callsign,
-    )
+    start = web.start_time(timeRange)
+    end = web.end_time(timeRange)
+    if end is None:
+        summary = web.get_store().summary(
+            start, continent, country, talkgroup, callsign
+        )
+        histogram = web.get_store().activity_histogram(
+            start,
+            web.histogram_bucket_seconds(timeRange),
+            continent,
+            country,
+            talkgroup,
+            callsign,
+        )
+    else:
+        summary = web.get_store().summary(
+            start, continent, country, talkgroup, callsign, end_time=end
+        )
+        histogram = web.get_store().activity_histogram(
+            start,
+            web.histogram_bucket_seconds(timeRange),
+            continent,
+            country,
+            talkgroup,
+            callsign,
+            end_time=end,
+        )
     return {
         "totalEntries": summary["qso_count"],
         "activityRange": summary["qso_count"],
@@ -159,9 +175,16 @@ def public_grouped_lastheard(
     )
     if access_error is not None:
         return access_error
-    rows = web.get_store().grouped_by_talkgroup(
-        web.start_time(timeRange), limit, continent, country, talkgroup, callsign
-    )
+    start = web.start_time(timeRange)
+    end = web.end_time(timeRange)
+    if end is None:
+        rows = web.get_store().grouped_by_talkgroup(
+            start, limit, continent, country, talkgroup, callsign
+        )
+    else:
+        rows = web.get_store().grouped_by_talkgroup(
+            start, limit, continent, country, talkgroup, callsign, end_time=end
+        )
     return [web._public_talkgroup(row) for row in rows]
 
 
@@ -181,9 +204,16 @@ def public_grouped_callsigns(
     )
     if access_error is not None:
         return access_error
-    rows = web.get_store().grouped_by_callsign(
-        web.start_time(timeRange), limit, callsign, continent, country, talkgroup
-    )
+    start = web.start_time(timeRange)
+    end = web.end_time(timeRange)
+    if end is None:
+        rows = web.get_store().grouped_by_callsign(
+            start, limit, callsign, continent, country, talkgroup
+        )
+    else:
+        rows = web.get_store().grouped_by_callsign(
+            start, limit, callsign, continent, country, talkgroup, end_time=end
+        )
     return [web._public_callsign(row) for row in rows]
 
 
@@ -218,9 +248,14 @@ def active_user_talkgroups(
     access_error = web._dashboard_access_error(request, time_range=timeRange)
     if access_error is not None:
         return access_error
-    rows = web.get_store().active_talkgroups(
-        web.start_time(timeRange), continent, country
-    )
+    start = web.start_time(timeRange)
+    end = web.end_time(timeRange)
+    if end is None:
+        rows = web.get_store().active_talkgroups(start, continent, country)
+    else:
+        rows = web.get_store().active_talkgroups(
+            start, continent, country, end_time=end
+        )
     return [
         {
             "value": row["value"],

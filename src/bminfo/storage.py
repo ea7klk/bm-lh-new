@@ -414,6 +414,7 @@ class PostgresStore:
         country: str | None = None,
         talkgroup: int | Sequence[int] | None = None,
         callsign: str | None = None,
+        end_time: datetime | None = None,
     ) -> dict[str, Any]:
         clauses = [f"{NAMED_DESTINATION_SQL} IS NOT NULL"]
         params: list[Any] = []
@@ -433,6 +434,9 @@ class PostgresStore:
         if talkgroup_ids:
             clauses.append("q.destination_id = ANY(%s)")
             params.append(talkgroup_ids)
+        if end_time is not None:
+            clauses.append("q.start_at < %s")
+            params.append(end_time)
         where_clause = "WHERE " + " AND ".join(clauses)
         with self.connection.cursor() as cursor:
             cursor.execute(
@@ -466,6 +470,7 @@ class PostgresStore:
         country: str | None = None,
         talkgroup: int | Sequence[int] | None = None,
         callsign: str | None = None,
+        end_time: datetime | None = None,
     ) -> list[dict[str, Any]]:
         """Return fixed-width QSO histogram buckets, including empty buckets."""
         bucket_seconds = min(max(int(bucket_seconds), 60), 7 * 24 * 60 * 60)
@@ -489,18 +494,22 @@ class PostgresStore:
         if talkgroup_ids:
             clauses.append("q.destination_id = ANY(%s)")
             params.append(talkgroup_ids)
+        if end_time is not None:
+            clauses.append("q.start_at < %s")
+            params.append(end_time)
         where_clause = " AND ".join(clauses)
         with self.connection.cursor() as cursor:
             cursor.execute(
                 f"""
                 WITH settings AS (
                     SELECT %s::double precision AS stride,
-                           %s::timestamptz AS start_at
+                           %s::timestamptz AS start_at,
+                           %s::timestamptz AS end_at
                 ), buckets AS (
                     SELECT generate_series(
                         date_bin(stride * interval '1 second', start_at,
                                  TIMESTAMPTZ '1970-01-01'),
-                        date_bin(stride * interval '1 second', now(),
+                        date_bin(stride * interval '1 second', end_at,
                                  TIMESTAMPTZ '1970-01-01'),
                         stride * interval '1 second'
                     ) AS bucket
@@ -522,7 +531,13 @@ class PostgresStore:
                 LEFT JOIN activity USING (bucket)
                 ORDER BY buckets.bucket
                 """,
-                [bucket_seconds, start_time, bucket_seconds, *params[1:]],
+                [
+                    bucket_seconds,
+                    start_time,
+                    end_time or datetime.now(tz=start_time.tzinfo),
+                    bucket_seconds,
+                    *params[1:],
+                ],
             )
             return [
                 {
@@ -541,6 +556,7 @@ class PostgresStore:
         country: str | None = None,
         talkgroup: int | Sequence[int] | None = None,
         callsign: str | None = None,
+        end_time: datetime | None = None,
     ) -> list[dict[str, Any]]:
         clauses = [
             "q.start_at >= %s",
@@ -562,6 +578,9 @@ class PostgresStore:
         if talkgroup_ids:
             clauses.append("q.destination_id = ANY(%s)")
             params.append(talkgroup_ids)
+        if end_time is not None:
+            clauses.append("q.start_at < %s")
+            params.append(end_time)
         params.append(min(max(limit, 1), 50))
         with self.connection.cursor() as cursor:
             cursor.execute(
@@ -596,6 +615,7 @@ class PostgresStore:
         continent: str | None = None,
         country: str | None = None,
         talkgroup: int | Sequence[int] | None = None,
+        end_time: datetime | None = None,
     ) -> list[dict[str, Any]]:
         clauses = [
             "q.start_at >= %s",
@@ -617,6 +637,9 @@ class PostgresStore:
         if talkgroup_ids:
             clauses.append("q.destination_id = ANY(%s)")
             params.append(talkgroup_ids)
+        if end_time is not None:
+            clauses.append("q.start_at < %s")
+            params.append(end_time)
         params.append(min(max(limit, 1), 50))
         with self.connection.cursor() as cursor:
             cursor.execute(
@@ -644,6 +667,7 @@ class PostgresStore:
         start_time: datetime,
         continent: str | None = None,
         country: str | None = None,
+        end_time: datetime | None = None,
     ) -> list[dict[str, Any]]:
         clauses = [
             "q.start_at >= %s",
@@ -658,6 +682,9 @@ class PostgresStore:
         if country:
             clauses.append("COALESCE(t.country, 'XX') = %s")
             params.append(country)
+        if end_time is not None:
+            clauses.append("q.start_at < %s")
+            params.append(end_time)
         with self.connection.cursor() as cursor:
             cursor.execute(
                 f"""
@@ -1222,6 +1249,7 @@ class PostgresStore:
         country: str | None = None,
         talkgroup: int | Sequence[int] | None = None,
         histogram_bucket_seconds: int = 3600,
+        end_time: datetime | None = None,
     ) -> dict[str, Any]:
         """Return report-ready aggregates and detail rows for the selected filters."""
         clauses = [
@@ -1244,13 +1272,16 @@ class PostgresStore:
         if talkgroup_ids:
             clauses.append("q.destination_id = ANY(%s)")
             params.append(talkgroup_ids)
+        if end_time is not None:
+            clauses.append("q.start_at < %s")
+            params.append(end_time)
         where_clause = " AND ".join(clauses)
-        period_end = datetime.now(tz=start_time.tzinfo)
+        period_end = end_time or datetime.now(tz=start_time.tzinfo)
         period_seconds = max(60, int((period_end - start_time).total_seconds()))
         previous_start = start_time - timedelta(seconds=period_seconds)
-        common_clauses = clauses[1:]
+        common_clauses = clauses[1:-1] if end_time is not None else clauses[1:]
         common_where = " AND ".join(common_clauses) or "TRUE"
-        common_params = params[1:]
+        common_params = params[1:-1] if end_time is not None else params[1:]
 
         with self.connection.cursor() as cursor:
             cursor.execute(
@@ -1555,6 +1586,7 @@ class PostgresStore:
             country,
             talkgroup,
             callsign,
+            end_time,
         )
         peak_periods = sorted(
             (row for row in histogram if int(row.get("qso_count") or 0) > 0),
