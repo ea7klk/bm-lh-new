@@ -40,6 +40,8 @@ from .i18n import (
     LANGUAGE_COOKIE,
     LANGUAGE_COOKIE_MAX_AGE,
     LANGUAGE_INFO,
+    SUPPORTED_LOCALES,
+    catalog,
     normalize_locale,
     translate,
 )
