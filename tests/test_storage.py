@@ -202,7 +202,8 @@ def test_irrelevant_raw_cleanup_uses_one_delete_and_non_blocking_vacuum():
 
     assert len(cursor.executed) == 1
     cleanup_query = cursor.executed[0][0]
-    assert "WITH candidates AS MATERIALIZED" in cleanup_query
+    assert "WITH ranked AS MATERIALIZED" in cleanup_query
+    assert "candidates AS MATERIALIZED" in cleanup_query
     assert "DELETE FROM raw_events" in cleanup_query
     assert "NOT EXISTS" in cleanup_query
     assert "ROW_NUMBER() OVER" in cleanup_query
