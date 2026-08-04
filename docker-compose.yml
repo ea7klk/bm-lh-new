@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
+    shm_size: ${POSTGRES_SHM_SIZE:-256MB}
     command:
       - postgres
       - -c

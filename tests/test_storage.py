@@ -212,7 +212,7 @@ def test_irrelevant_raw_cleanup_uses_one_delete_and_non_blocking_vacuum():
         "raw_events_deleted": 3,
         "raw_events_retained": 2,
     }
-    assert connection.compacted == ["VACUUM (ANALYZE) raw_events"]
+    assert connection.compacted == ["VACUUM (ANALYZE, PARALLEL 0) raw_events"]
 
 
 def test_pinned_talkgroup_backfill_uses_runtime_threshold():

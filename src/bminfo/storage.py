@@ -2147,8 +2147,13 @@ class PostgresStore:
                 # VACUUM FULL rewrites the whole table while holding an
                 # exclusive lock. Regular vacuum makes deleted space reusable
                 # and refreshes planner statistics without blocking the
-                # application for a full table rewrite.
-                self.connection.execute(f"VACUUM (ANALYZE) {table_name}")
+                # application for a full table rewrite. Disable parallel index
+                # cleanup here because Docker's default /dev/shm size can be
+                # smaller than the dynamic shared-memory segment PostgreSQL
+                # requests for a large raw_events table.
+                self.connection.execute(
+                    f"VACUUM (ANALYZE, PARALLEL 0) {table_name}"
+                )
 
     def list_users(self) -> list[dict[str, Any]]:
         with self.connection.cursor() as cursor:
