@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 import json
 
 from bminfo.models import parse_event
-from bminfo.sessionizer import make_qso
+from bminfo.sessionizer import is_below_kerchunk_threshold, make_qso
 
 
 UTC = timezone.utc
@@ -23,6 +23,11 @@ def event(duration: float, event_type: str = "Session-Stop"):
 
 def test_kerchunk_shorter_than_three_seconds_is_dropped():
     assert make_qso(event(2.999)) is None
+
+
+def test_below_threshold_event_is_identified_before_raw_persistence():
+    assert is_below_kerchunk_threshold(event(2.999), 3) is True
+    assert is_below_kerchunk_threshold(event(3), 3) is False
 
 
 def test_exactly_three_seconds_is_retained():

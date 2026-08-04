@@ -8,7 +8,7 @@ import socketio
 
 from .config import settings
 from .models import parse_event
-from .sessionizer import make_qso
+from .sessionizer import is_below_kerchunk_threshold, make_qso
 from .storage import PostgresStore
 from .talkgroups import sync_talkgroups
 
@@ -129,6 +129,17 @@ def run() -> None:
             # table. The explicit admin cleanup handles historical rows.
             if event.event_type.casefold() != "session-stop":
                 logger.debug("ignored non-QSO event %s (%s)", event.session_id, event.event_type)
+                return
+            if is_below_kerchunk_threshold(
+                event, settings.kerchunk_threshold_seconds
+            ):
+                duration_seconds = (event.stop_at - event.start_at).total_seconds()
+                logger.debug(
+                    "ignored below-threshold raw event %s: %.3fs below %.3fs threshold",
+                    event.session_id,
+                    duration_seconds,
+                    settings.kerchunk_threshold_seconds,
+                )
                 return
             qso = make_qso(
                 event,

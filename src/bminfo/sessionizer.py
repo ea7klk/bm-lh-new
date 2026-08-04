@@ -34,6 +34,17 @@ class QSO:
     payload: dict
 
 
+def is_below_kerchunk_threshold(
+    event: BMEvent, kerchunk_threshold_seconds: float
+) -> bool:
+    """Return whether an event has a measurable duration below the threshold."""
+    if event.start_at is None or event.stop_at is None:
+        return False
+    return (
+        event.stop_at - event.start_at
+    ).total_seconds() < kerchunk_threshold_seconds
+
+
 def make_qso(
     event: BMEvent,
     kerchunk_threshold_seconds: float = 3.0,
