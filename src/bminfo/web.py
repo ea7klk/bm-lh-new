@@ -8,6 +8,7 @@ import html
 import hmac
 import io
 import json
+import logging
 import re
 from time import perf_counter
 from urllib.parse import parse_qs, quote, urlencode
@@ -86,6 +87,8 @@ from .storage import QSO_NOTIFY_CHANNEL, PostgresStore
 
 
 UTC = timezone.utc
+logger = logging.getLogger(__name__)
+NIGHTLY_RAW_EVENTS_CLEANUP_HOUR = 2
 TIME_RANGES = {
     "5m": 5 * 60,
     "15m": 15 * 60,
@@ -124,12 +127,72 @@ def shutdown() -> None:
         store = None
 
 
+def _next_nightly_raw_events_cleanup(
+    now: datetime | None = None,
+) -> datetime:
+    """Return the next 02:00 local-time cleanup instant in UTC."""
+    local_now = (now or datetime.now(tz=UTC)).astimezone(_calendar_timezone())
+    target = local_now.replace(
+        hour=NIGHTLY_RAW_EVENTS_CLEANUP_HOUR,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    if local_now >= target:
+        target += timedelta(days=1)
+    return target.astimezone(UTC)
+
+
+async def _nightly_raw_events_cleanup_loop() -> None:
+    """Run irrelevant raw-event cleanup once per local calendar day."""
+    while True:
+        target = _next_nightly_raw_events_cleanup()
+        delay_seconds = max((target - datetime.now(tz=UTC)).total_seconds(), 1.0)
+        logger.info(
+            "scheduled irrelevant raw-event cleanup for %s",
+            target.astimezone(_calendar_timezone()).isoformat(),
+        )
+        await asyncio.sleep(delay_seconds)
+        operation = asyncio.create_task(
+            asyncio.to_thread(
+                get_store().clear_irrelevant_raw_events,
+                settings.kerchunk_threshold_seconds,
+                try_advisory_lock=True,
+            )
+        )
+        try:
+            result = await asyncio.shield(operation)
+            if result.get("cleanup_skipped"):
+                logger.info(
+                    "irrelevant raw-event cleanup skipped; another web worker owns the run"
+                )
+            else:
+                logger.info(
+                    "nightly irrelevant raw-event cleanup completed: candidates=%d deleted=%d retained=%d",
+                    result["raw_events_candidates"],
+                    result["raw_events_deleted"],
+                    result["raw_events_retained"],
+                )
+        except asyncio.CancelledError:
+            # Do not close the pooled store while a database operation is still
+            # running in a worker thread during application shutdown.
+            with suppress(Exception):
+                await operation
+            raise
+        except Exception:
+            logger.exception("nightly irrelevant raw-event cleanup failed")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     startup()
+    cleanup_task = asyncio.create_task(_nightly_raw_events_cleanup_loop())
     try:
         yield
     finally:
+        cleanup_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await cleanup_task
         shutdown()
 
 

@@ -205,14 +205,35 @@ def test_irrelevant_raw_cleanup_uses_one_delete_and_non_blocking_vacuum():
     assert "WITH candidates AS MATERIALIZED" in cleanup_query
     assert "DELETE FROM raw_events" in cleanup_query
     assert "NOT EXISTS" in cleanup_query
+    assert "ROW_NUMBER() OVER" in cleanup_query
+    assert "duplicate_rank > 1" in cleanup_query
     assert "start_at + (%s * interval '1 second')" in cleanup_query
-    assert cursor.executed[0][1] == (7.0,)
+    assert cursor.executed[0][1] == (7.0, 7.0)
     assert result == {
         "raw_events_candidates": 5,
         "raw_events_deleted": 3,
         "raw_events_retained": 2,
     }
     assert connection.compacted == ["VACUUM (ANALYZE, PARALLEL 0) raw_events"]
+
+
+def test_scheduled_irrelevant_raw_cleanup_can_skip_when_another_worker_holds_lock():
+    class LockedCursor(CleanupCursor):
+        def execute(self, query, params=None):
+            self.executed.append((query, params))
+            if "pg_try_advisory_xact_lock" in query:
+                self.result = (False,)
+
+    cursor = LockedCursor()
+    connection = CleanupConnection(cursor)
+    store = object.__new__(PostgresStore)
+    store.connection = connection
+
+    result = store.clear_irrelevant_raw_events(7, try_advisory_lock=True)
+
+    assert result["cleanup_skipped"] == 1
+    assert len(cursor.executed) == 1
+    assert connection.compacted == []
 
 
 def test_pinned_talkgroup_backfill_uses_runtime_threshold():

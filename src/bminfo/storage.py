@@ -20,6 +20,7 @@ DISPLAY_EXCLUDED_DESTINATION_ID = 9
 QSO_NOTIFY_CHANNEL = "bminfo_qso_inserted"
 UNUSUALLY_LONG_DURATION_SECONDS = 60 * 60
 MAX_PLAUSIBLE_INGESTION_DELAY_SECONDS = 24 * 60 * 60
+RAW_EVENTS_CLEANUP_ADVISORY_LOCK_KEY = 604_214_002
 
 
 class _PooledConnection:
@@ -1893,19 +1894,43 @@ class PostgresStore:
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
+                WITH ranked AS (
+                    SELECT r.id,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY r.session_id, lower(r.event_type)
+                               ORDER BY
+                                   CASE WHEN EXISTS (
+                                       SELECT 1
+                                       FROM qsos q
+                                       WHERE q.raw_event_id = r.id
+                                   ) THEN 0 ELSE 1 END,
+                                   CASE WHEN r.start_at IS NOT NULL
+                                             AND r.stop_at IS NOT NULL
+                                             AND r.stop_at >= r.start_at + (%s * interval '1 second')
+                                        THEN 0 ELSE 1 END,
+                                   r.stop_at DESC NULLS LAST,
+                                   r.received_at DESC,
+                                   r.id DESC
+                           ) AS duplicate_rank,
+                           lower(r.event_type) <> 'session-stop' AS is_non_session_stop,
+                           r.start_at IS NOT NULL
+                               AND r.stop_at IS NOT NULL
+                               AND r.stop_at < r.start_at + (%s * interval '1 second')
+                               AS is_below_threshold
+                    FROM raw_events r
+                )
                 SELECT
                     (SELECT COUNT(*)::bigint FROM raw_events),
                     (SELECT COUNT(*)::bigint FROM qsos),
-                    (SELECT COUNT(*)::bigint
-                       FROM raw_events
-                      WHERE lower(event_type) <> 'session-stop'
-                         OR (
-                             start_at IS NOT NULL
-                             AND stop_at IS NOT NULL
-                             AND stop_at < start_at + (%s * interval '1 second')
-                         ))
+                    (SELECT COUNT(*)::bigint FROM ranked
+                      WHERE is_non_session_stop
+                         OR is_below_threshold
+                         OR duplicate_rank > 1)
                 """,
-                (float(kerchunk_threshold_seconds),),
+                (
+                    float(kerchunk_threshold_seconds),
+                    float(kerchunk_threshold_seconds),
+                ),
             )
             raw_events, qsos, irrelevant_raw_events = cursor.fetchone()
         return {
@@ -1915,27 +1940,64 @@ class PostgresStore:
         }
 
     def clear_irrelevant_raw_events(
-        self, kerchunk_threshold_seconds: float = 3.0
+        self,
+        kerchunk_threshold_seconds: float = 3.0,
+        *,
+        try_advisory_lock: bool = False,
     ) -> dict[str, int]:
         """Delete irrelevant raw packets and maintain the raw table.
 
-        Displayable QSOs are built from valid session-stop packets at or above
-        the configured threshold. Any historical row referenced by a QSO is
-        retained defensively so the foreign-key relationship remains intact.
+        Keep one canonical row per session and event type. Prefer a row
+        referenced by a QSO, then a valid above-threshold row, then the newest
+        row. Any historical row referenced by a QSO is retained defensively so
+        the foreign-key relationship remains intact.
         """
         with self.connection.transaction():
             with self.connection.cursor() as cursor:
+                if try_advisory_lock:
+                    cursor.execute(
+                        "SELECT pg_try_advisory_xact_lock(%s)",
+                        (RAW_EVENTS_CLEANUP_ADVISORY_LOCK_KEY,),
+                    )
+                    if not cursor.fetchone()[0]:
+                        return {
+                            "raw_events_candidates": 0,
+                            "raw_events_deleted": 0,
+                            "raw_events_retained": 0,
+                            "cleanup_skipped": 1,
+                        }
                 cursor.execute(
                     """
-                    WITH candidates AS MATERIALIZED (
-                        SELECT r.id
-                        FROM raw_events r
-                        WHERE lower(r.event_type) <> 'session-stop'
-                           OR (
+                    WITH ranked AS MATERIALIZED (
+                        SELECT r.id,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY r.session_id, lower(r.event_type)
+                                   ORDER BY
+                                       CASE WHEN EXISTS (
+                                           SELECT 1
+                                           FROM qsos q
+                                           WHERE q.raw_event_id = r.id
+                                       ) THEN 0 ELSE 1 END,
+                                       CASE WHEN r.start_at IS NOT NULL
+                                                 AND r.stop_at IS NOT NULL
+                                                 AND r.stop_at >= r.start_at + (%s * interval '1 second')
+                                            THEN 0 ELSE 1 END,
+                                       r.stop_at DESC NULLS LAST,
+                                       r.received_at DESC,
+                                       r.id DESC
+                               ) AS duplicate_rank,
+                               lower(r.event_type) <> 'session-stop' AS is_non_session_stop,
                                r.start_at IS NOT NULL
-                               AND r.stop_at IS NOT NULL
-                               AND r.stop_at < r.start_at + (%s * interval '1 second')
-                           )
+                                   AND r.stop_at IS NOT NULL
+                                   AND r.stop_at < r.start_at + (%s * interval '1 second')
+                                   AS is_below_threshold
+                        FROM raw_events r
+                    ), candidates AS MATERIALIZED (
+                        SELECT id
+                        FROM ranked
+                        WHERE is_non_session_stop
+                           OR is_below_threshold
+                           OR duplicate_rank > 1
                     ), deleted AS (
                         DELETE FROM raw_events r
                         USING candidates c
@@ -1951,7 +2013,10 @@ class PostgresStore:
                         (SELECT COUNT(*)::bigint FROM candidates),
                         (SELECT COUNT(*)::bigint FROM deleted)
                     """,
-                    (float(kerchunk_threshold_seconds),),
+                    (
+                        float(kerchunk_threshold_seconds),
+                        float(kerchunk_threshold_seconds),
+                    ),
                 )
                 candidates, deleted = cursor.fetchone()
 
