@@ -12,7 +12,12 @@ their responsibilities are split into focused modules:
 ```text
 src/bminfo/
 ├── web.py             application lifecycle, middleware, dashboard, account,
-│                      live-QSO, report, and page-rendering coordination
+│                      authentication, and shared page-layout coordination
+├── auth_routes.py     registration, login, sessions, profile, and email flows
+├── dashboard_routes.py public dashboard and project-information pages
+├── live_routes.py     authenticated live-QSO page and websocket stream
+├── report_routes.py   authenticated reports, charts, and CSV/XLSX/PDF exports
+├── admin_page.py      authenticated admin HTML shell and maintenance presentation
 ├── public_routes.py   health, status, public statistics, filters, and QSO APIs
 ├── admin_routes.py    admin APIs, QSO rebuild, retention cleanup, and user actions
 ├── storage.py         PostgreSQL queries, transactions, and data maintenance
@@ -22,13 +27,14 @@ src/bminfo/
 └── config.py          environment-backed application settings
 ```
 
-`web.py` includes the public and admin routers and re-exports their handler
-names for compatibility with existing integrations and tests. The extracted
-handlers resolve shared storage, settings, and authentication helpers when a
-request is handled, so runtime configuration and test overrides continue to
-work without duplicating application state. New route groups should follow the
-same pattern: keep HTTP concerns in a router module, put database behavior in
-`storage.py`, and keep presentation helpers separate from query logic.
+`web.py` includes the public, admin API, account, dashboard, live-QSO, report,
+and admin-page routers and re-exports their legacy handler names for compatibility with existing
+integrations and tests. The feature routers resolve shared storage, settings,
+authentication, and page-layout helpers when a request is handled, so runtime
+configuration and test overrides continue to work without duplicating
+application state. New route groups should follow the same pattern: keep HTTP
+concerns in a router module, put database behavior in `storage.py`, and keep
+presentation helpers separate from query logic.
 
 Run the full test suite after changing a route or storage query:
 
