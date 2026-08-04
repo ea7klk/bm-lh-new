@@ -135,7 +135,10 @@ and collector heartbeat freshness. It returns HTTP `200` when all services are h
 HTTP `503` when the database is unavailable or the collector heartbeat is stale. The collector
 heartbeat interval is configurable with `COLLECTOR_HEARTBEAT_SECONDS` (default `30`); the status
 endpoint considers the collector stale after three intervals, with a minimum grace period of
-90 seconds.
+90 seconds. During container shutdown it disconnects from the LastHeard stream, finishes any
+in-flight database write, and closes its pooled connections. `COLLECTOR_SHUTDOWN_TIMEOUT_SECONDS`
+(default `15`) controls the maximum drain period. This minimizes shutdown loss; a deployment gap
+can still miss events unless two collectors overlap or the upstream service provides replay.
 
 Callsign searches and the extended dashboard ranges (`2w` / last 14 days, `1M` / last month,
 `2M` / last 2 months, and `3M` / last 3 months; month ranges use 30-day increments) require an active user session. Anonymous visitors can
@@ -168,6 +171,8 @@ COOKIE_SECURE=false
 KERCHUNK_THRESHOLD_SECONDS=3
 # How often the collector records its process heartbeat.
 COLLECTOR_HEARTBEAT_SECONDS=30
+# Maximum time to finish an in-flight event during graceful shutdown.
+COLLECTOR_SHUTDOWN_TIMEOUT_SECONDS=15
 # Seven days since the user's last authenticated request.
 SESSION_HOURS=168
 # Keep report generation from blocking other requests under concurrent use.
@@ -179,6 +184,18 @@ POSTGRES_POOL_MAX_SIZE=20
 The web process uses a bounded PostgreSQL pool per worker. Increase `WEB_WORKERS` for additional
 CPU capacity and adjust `POSTGRES_POOL_MAX_SIZE` only if the PostgreSQL server has enough
 connection capacity for all web workers, collectors, and administrative connections.
+
+### PostgreSQL sizing for retained data
+
+The reference workload produced approximately 435 MB in three days, including 380 MB of
+`raw_events`. If that rate remains stable, budget roughly 13 GB for three months or 26 GB for
+six months, then add headroom for indexes, WAL, and maintenance. The Compose files expose
+PostgreSQL memory, planner, WAL, and autovacuum settings through the `POSTGRES_*` variables in
+`.env.example`. The suggested values assume an SSD-backed host with at least 4 GB available to
+PostgreSQL; reduce `POSTGRES_SHARED_BUFFERS` and `POSTGRES_EFFECTIVE_CACHE_SIZE` on smaller hosts.
+
+These settings tune PostgreSQL for the retention period; they do not delete data automatically.
+Use the admin maintenance actions to remove old `raw_events` or `qsos` records after confirmation.
 
 After changing `KERCHUNK_THRESHOLD_SECONDS` in `.env`, recreate both the `web` and
 `collector` services so their process environments are refreshed:

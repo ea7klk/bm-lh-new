@@ -1887,7 +1887,9 @@ class PostgresStore:
             "qsos": int(qsos),
         }
 
-    def maintenance_overview(self) -> dict[str, int]:
+    def maintenance_overview(
+        self, kerchunk_threshold_seconds: float = 3.0
+    ) -> dict[str, int]:
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -1896,8 +1898,14 @@ class PostgresStore:
                     (SELECT COUNT(*)::bigint FROM qsos),
                     (SELECT COUNT(*)::bigint
                        FROM raw_events
-                      WHERE lower(event_type) <> 'session-stop')
-                """
+                      WHERE lower(event_type) <> 'session-stop'
+                         OR (
+                             start_at IS NOT NULL
+                             AND stop_at IS NOT NULL
+                             AND stop_at < start_at + (%s * interval '1 second')
+                         ))
+                """,
+                (float(kerchunk_threshold_seconds),),
             )
             raw_events, qsos, irrelevant_raw_events = cursor.fetchone()
         return {
@@ -1906,12 +1914,14 @@ class PostgresStore:
             "irrelevant_raw_events": int(irrelevant_raw_events),
         }
 
-    def clear_irrelevant_raw_events(self) -> dict[str, int]:
-        """Delete non-session-stop raw packets and maintain the raw table.
+    def clear_irrelevant_raw_events(
+        self, kerchunk_threshold_seconds: float = 3.0
+    ) -> dict[str, int]:
+        """Delete irrelevant raw packets and maintain the raw table.
 
-        Displayable QSOs are built from session-stop packets. Any historical
-        non-session-stop row referenced by a QSO is retained defensively so
-        the foreign-key relationship remains intact.
+        Displayable QSOs are built from valid session-stop packets at or above
+        the configured threshold. Any historical row referenced by a QSO is
+        retained defensively so the foreign-key relationship remains intact.
         """
         with self.connection.transaction():
             with self.connection.cursor() as cursor:
@@ -1921,6 +1931,11 @@ class PostgresStore:
                         SELECT r.id
                         FROM raw_events r
                         WHERE lower(r.event_type) <> 'session-stop'
+                           OR (
+                               r.start_at IS NOT NULL
+                               AND r.stop_at IS NOT NULL
+                               AND r.stop_at < r.start_at + (%s * interval '1 second')
+                           )
                     ), deleted AS (
                         DELETE FROM raw_events r
                         USING candidates c
@@ -1935,7 +1950,8 @@ class PostgresStore:
                     SELECT
                         (SELECT COUNT(*)::bigint FROM candidates),
                         (SELECT COUNT(*)::bigint FROM deleted)
-                    """
+                    """,
+                    (float(kerchunk_threshold_seconds),),
                 )
                 candidates, deleted = cursor.fetchone()
 

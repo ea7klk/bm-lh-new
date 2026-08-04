@@ -36,6 +36,9 @@ class Settings:
     collector_heartbeat_seconds: int = int(
         os.getenv("COLLECTOR_HEARTBEAT_SECONDS", "30")
     )
+    collector_shutdown_timeout_seconds: int = int(
+        os.getenv("COLLECTOR_SHUTDOWN_TIMEOUT_SECONDS", "15")
+    )
     app_host: str = os.getenv("APP_HOST", "0.0.0.0")
     app_port: int = int(os.getenv("APP_PORT", "8000"))
     app_timezone: str = os.getenv("APP_TIMEZONE", "Europe/Madrid")

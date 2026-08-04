@@ -2170,7 +2170,7 @@ def _legacy_admin_panel(request: Request) -> Response:
     stats = get_store().admin_statistics()
     users = get_store().list_users()
     postgres = get_store().postgres_overview()
-    maintenance = get_store().maintenance_overview()
+    maintenance = get_store().maintenance_overview(settings.kerchunk_threshold_seconds)
     retention = {months: get_store().retention_counts(months) for months in ADMIN_RETENTION_MONTHS}
     query_seconds = perf_counter() - query_started
     rows = "".join(_admin_user_row(user, locale) for user in users) or f'<tr><td colspan="7" class="muted">{_escape(translate(locale, "admin.registeredUsers"))}</td></tr>'
@@ -2182,6 +2182,7 @@ def _legacy_admin_panel(request: Request) -> Response:
         json.dumps(
             translate(locale, "adminMaintenance.irrelevantRawConfirm").format(
                 count=maintenance["irrelevant_raw_events"],
+                threshold=settings.kerchunk_threshold_seconds,
             )
         )
     )
@@ -2283,13 +2284,20 @@ def admin_panel_async(request: Request) -> Response:
         "rawConfirm": tr("adminMaintenance.rawConfirm"),
         "qsoConfirm": tr("adminMaintenance.qsoConfirm"),
         "dependentQsos": tr("adminMaintenance.dependentQsos"),
+        "kerchunkThreshold": settings.kerchunk_threshold_seconds,
         "periods": {str(months): _admin_retention_period(locale, months) for months in ADMIN_RETENTION_MONTHS},
     }
     client_text_json = json.dumps(client_text, ensure_ascii=False).replace("</", "<\\/")
     loading = _escape(client_text["loading"])
     maintenance_notice = _admin_maintenance_notice(request, locale)
     rebuild_confirm = _escape(json.dumps(tr("adminMaintenance.rebuildConfirm")))
-    irrelevant_confirm = _escape(json.dumps(tr("adminMaintenance.irrelevantRawConfirm").replace("{count}", "0")))
+    irrelevant_confirm = _escape(
+        json.dumps(
+            tr("adminMaintenance.irrelevantRawConfirm")
+            .replace("{count}", "0")
+            .replace("{threshold}", str(settings.kerchunk_threshold_seconds))
+        )
+    )
     content = f"""
 <style>
 .admin-loading{{color:#9ca3af;animation:admin-pulse 1.2s ease-in-out infinite alternate}}
@@ -2363,7 +2371,7 @@ def admin_panel_async(request: Request) -> Response:
     setValue("adminMaintenanceQsos", data.qsos); setValue("adminMaintenanceRaw", data.raw_events); setValue("adminMaintenanceIrrelevant", data.irrelevant_raw_events);
     const rebuild = document.querySelector('form[action="/admin/maintenance/rebuild-qsos"]'); const irrelevant = document.querySelector('form[action="/admin/maintenance/irrelevant-raw-events"]');
     if (rebuild) rebuild.dataset.confirm = text.rebuildConfirm;
-    if (irrelevant) irrelevant.dataset.confirm = replaceTemplate(text.irrelevantRawConfirm, {{count: data.irrelevant_raw_events}});
+    if (irrelevant) irrelevant.dataset.confirm = replaceTemplate(text.irrelevantRawConfirm, {{count: data.irrelevant_raw_events, threshold: text.kerchunkThreshold}});
   }}
   function renderRetention(kind, months, data) {{
     const isRaw = kind === "raw-events"; const count = isRaw ? data.raw_events : data.qsos;

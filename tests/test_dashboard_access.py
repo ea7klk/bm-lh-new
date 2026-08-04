@@ -435,6 +435,14 @@ def test_admin_maintenance_actions_use_configured_threshold_and_redirect(monkeyp
             calls["threshold"] = threshold
             return {"raw_events_scanned": 12, "eligible_qsos": 4, "qsos_rebuilt": 3}
 
+        def clear_irrelevant_raw_events(self, threshold):
+            calls["irrelevant_threshold"] = threshold
+            return {
+                "raw_events_candidates": 5,
+                "raw_events_deleted": 4,
+                "raw_events_retained": 1,
+            }
+
         def clear_old_raw_events(self, months):
             calls["raw_months"] = months
             return {"months": months, "raw_events_deleted": 8, "qsos_deleted": 2}
@@ -446,10 +454,12 @@ def test_admin_maintenance_actions_use_configured_threshold_and_redirect(monkeyp
     monkeypatch.setattr(web, "get_store", lambda: MaintenanceStore())
 
     rebuild = web.admin_rebuild_qsos(_request())
+    irrelevant = web.admin_clear_irrelevant_raw_events(_request())
     raw = web.admin_clear_raw_events(2, _request())
     qsos = web.admin_clear_qsos(3, _request())
 
     assert calls["threshold"] == web.settings.kerchunk_threshold_seconds
+    assert calls["irrelevant_threshold"] == web.settings.kerchunk_threshold_seconds
     assert calls["raw_months"] == 2
     assert calls["qso_months"] == 3
     assert rebuild.headers["location"] == "/admin?notice=rebuild&count=3&raw=12"

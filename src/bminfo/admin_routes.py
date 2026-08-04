@@ -59,7 +59,13 @@ def admin_maintenance(request: Request) -> JSONResponse:
     web = _web()
     if not web._admin_allowed(request):
         return _authentication_required()
-    return JSONResponse(jsonable_encoder(web.get_store().maintenance_overview()))
+    return JSONResponse(
+        jsonable_encoder(
+            web.get_store().maintenance_overview(
+                web.settings.kerchunk_threshold_seconds
+            )
+        )
+    )
 
 
 @router.get("/admin/maintenance/{months}")
@@ -112,7 +118,9 @@ def admin_clear_irrelevant_raw_events(request: Request) -> Response:
     web = _web()
     if not web._admin_allowed(request):
         return _authentication_required()
-    result = web.get_store().clear_irrelevant_raw_events()
+    result = web.get_store().clear_irrelevant_raw_events(
+        web.settings.kerchunk_threshold_seconds
+    )
     if request.headers.get("accept", "").startswith("application/json"):
         return JSONResponse(jsonable_encoder(result))
     return web._admin_redirect(

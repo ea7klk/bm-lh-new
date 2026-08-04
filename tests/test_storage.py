@@ -198,13 +198,15 @@ def test_irrelevant_raw_cleanup_uses_one_delete_and_non_blocking_vacuum():
     store = object.__new__(PostgresStore)
     store.connection = connection
 
-    result = store.clear_irrelevant_raw_events()
+    result = store.clear_irrelevant_raw_events(7)
 
     assert len(cursor.executed) == 1
     cleanup_query = cursor.executed[0][0]
     assert "WITH candidates AS MATERIALIZED" in cleanup_query
     assert "DELETE FROM raw_events" in cleanup_query
     assert "NOT EXISTS" in cleanup_query
+    assert "start_at + (%s * interval '1 second')" in cleanup_query
+    assert cursor.executed[0][1] == (7.0,)
     assert result == {
         "raw_events_candidates": 5,
         "raw_events_deleted": 3,

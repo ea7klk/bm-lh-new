@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
+import signal
 import threading
-import time
 
 import socketio
 
@@ -57,6 +57,10 @@ def run() -> None:
     store = PostgresStore(settings.database_url)
     store.initialize(settings.kerchunk_threshold_seconds)
     stop_event = threading.Event()
+    inflight_lock = threading.Lock()
+    inflight_done = threading.Event()
+    inflight_done.set()
+    inflight_events = 0
     talkgroup_thread = threading.Thread(
         target=_talkgroup_sync_loop,
         args=(store, stop_event),
@@ -81,6 +85,21 @@ def run() -> None:
     )
     stored_qso_count = 0
 
+    def request_shutdown(signum: int, _frame: object) -> None:
+        """Stop receiving new events and close the stream on container shutdown."""
+        if stop_event.is_set():
+            return
+        logger.info("shutdown requested (signal %s)", signum)
+        stop_event.set()
+        try:
+            if sio.connected:
+                sio.disconnect()
+        except Exception:
+            logger.exception("failed to disconnect from BrandMeister cleanly")
+
+    signal.signal(signal.SIGTERM, request_shutdown)
+    signal.signal(signal.SIGINT, request_shutdown)
+
     @sio.event
     def connect() -> None:
         logger.info("connected to BrandMeister LastHeard")
@@ -93,59 +112,84 @@ def run() -> None:
 
     @sio.on("mqtt")
     def on_mqtt(data: object) -> None:
-        nonlocal stored_qso_count
-        event = parse_event(data)
-        if event is None:
-            logger.warning("ignored malformed mqtt payload")
-            return
-        # Session-stop contains all fields needed to build a completed QSO.
-        # Session-start/update and other administrative packets are not used
-        # by the sessionizer, so do not persist them in the raw-event audit
-        # table. The explicit admin cleanup handles historical rows.
-        if event.event_type.casefold() != "session-stop":
-            logger.debug("ignored non-QSO event %s (%s)", event.session_id, event.event_type)
-            return
-        qso = make_qso(
-            event,
-            settings.kerchunk_threshold_seconds,
-            settings.exclude_local_talkgroup,
-        )
-        threshold_ms = round(settings.kerchunk_threshold_seconds * 1000)
-        if qso is not None and qso.duration_ms < threshold_ms:
-            logger.debug(
-                "filtered kerchunk/invalid session %s: %.3fs below %.3fs threshold",
-                event.session_id,
-                qso.duration_ms / 1000,
-                settings.kerchunk_threshold_seconds,
-            )
-            qso = None
-        stored = store.ingest(event, qso)
-        if stored:
-            stored_qso_count += 1
-            _log_stored_qso_progress(stored_qso_count)
-        elif qso is not None:
-            logger.debug("filtered non-displayable QSO %s", qso.session_id)
-        else:
-            logger.debug("filtered kerchunk/invalid session %s", event.session_id)
-
-    while True:
+        nonlocal stored_qso_count, inflight_events
+        with inflight_lock:
+            if stop_event.is_set():
+                return
+            inflight_events += 1
+            inflight_done.clear()
         try:
-            sio.connect(
-                url=settings.bm_url,
-                socketio_path=settings.bm_socketio_path,
-                transports=["websocket"],
+            event = parse_event(data)
+            if event is None:
+                logger.warning("ignored malformed mqtt payload")
+                return
+            # Session-stop contains all fields needed to build a completed QSO.
+            # Session-start/update and other administrative packets are not used
+            # by the sessionizer, so do not persist them in the raw-event audit
+            # table. The explicit admin cleanup handles historical rows.
+            if event.event_type.casefold() != "session-stop":
+                logger.debug("ignored non-QSO event %s (%s)", event.session_id, event.event_type)
+                return
+            qso = make_qso(
+                event,
+                settings.kerchunk_threshold_seconds,
+                settings.exclude_local_talkgroup,
             )
-            sio.wait()
-        except KeyboardInterrupt:
-            logger.info("stopping collector")
-            break
+            threshold_ms = round(settings.kerchunk_threshold_seconds * 1000)
+            if qso is not None and qso.duration_ms < threshold_ms:
+                logger.debug(
+                    "filtered kerchunk/invalid session %s: %.3fs below %.3fs threshold",
+                    event.session_id,
+                    qso.duration_ms / 1000,
+                    settings.kerchunk_threshold_seconds,
+                )
+                qso = None
+            stored = store.ingest(event, qso)
+            if stored:
+                stored_qso_count += 1
+                _log_stored_qso_progress(stored_qso_count)
+            elif qso is not None:
+                logger.debug("filtered non-displayable QSO %s", qso.session_id)
+            else:
+                logger.debug("filtered kerchunk/invalid session %s", event.session_id)
+        finally:
+            with inflight_lock:
+                inflight_events -= 1
+                if inflight_events == 0:
+                    inflight_done.set()
+
+    try:
+        while not stop_event.is_set():
+            try:
+                sio.connect(
+                    url=settings.bm_url,
+                    socketio_path=settings.bm_socketio_path,
+                    transports=["websocket"],
+                )
+                sio.wait()
+            except KeyboardInterrupt:
+                request_shutdown(signal.SIGINT, None)
+            except Exception:
+                if stop_event.is_set():
+                    break
+                logger.exception("collector connection failed; retrying in 10 seconds")
+                stop_event.wait(10)
+    finally:
+        stop_event.set()
+        try:
+            if sio.connected:
+                sio.disconnect()
         except Exception:
-            logger.exception("collector connection failed; retrying in 10 seconds")
-            time.sleep(10)
-    stop_event.set()
-    talkgroup_thread.join(timeout=2)
-    heartbeat_thread.join(timeout=2)
-    store.close()
+            logger.exception("failed to disconnect from BrandMeister during cleanup")
+        if not inflight_done.wait(settings.collector_shutdown_timeout_seconds):
+            logger.warning(
+                "timed out after %ss waiting for %s in-flight event(s)",
+                settings.collector_shutdown_timeout_seconds,
+                inflight_events,
+            )
+        talkgroup_thread.join(timeout=2)
+        heartbeat_thread.join(timeout=2)
+        store.close()
 
 
 def main() -> None:
