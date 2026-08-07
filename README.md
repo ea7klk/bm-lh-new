@@ -334,7 +334,10 @@ export file path.
 
 The admin page also includes a read-only PostgreSQL overview with database size, connections,
 server/version information, table size estimates, and connection states. The “Refresh planner
-statistics” action runs `ANALYZE` only against the application tables.
+statistics” action runs `ANALYZE` only against the application tables. The PostgreSQL section
+also links to the separate pgAdmin 4 service. pgAdmin reuses `SMTP_USERNAME` as its initial login
+email and `ADMIN_PASSWORD` as its initial login password. In the Dockge deployment it is published
+by Traefik at the host configured by `PGADMIN_HOST`.
 
 ## License
 

@@ -68,6 +68,16 @@ def _admin_hms(value):
     return format_hms(value)
 
 
+def _pgadmin_link(locale: str) -> str:
+    if not settings.pgadmin_url:
+        return ""
+    return (
+        f'<a class="button secondary" href="{_escape(settings.pgadmin_url)}" '
+        f'target="_blank" rel="noopener noreferrer">'
+        f'{_escape(translate(locale, "admin.openPgAdmin"))}</a>'
+    )
+
+
 def _admin_user_row(user: dict[str, Any], locale: str = "en") -> str:
     active = bool(user["is_active"])
     status = translate(locale, "admin.active" if active else "admin.inactive")
@@ -250,7 +260,7 @@ def _legacy_admin_panel(request: Request) -> Response:
 <tr><td>{_escape(translate(locale, "admin.collectorHeartbeatLag"))}</td><td>{_escape(_admin_seconds(quality['collector_heartbeat_lag_seconds']))}</td></tr>
 </tbody></table></div></section>
 <section class="card"><h2>{_escape(translate(locale, "admin.registeredUsers"))}</h2><p class="muted">{_escape(translate(locale, "admin.userMetrics"))}</p><div class="table-wrap"><table><thead><tr><th>{_escape(translate(locale, "user.callsign"))}</th><th>{_escape(translate(locale, "user.name"))}</th><th>{_escape(translate(locale, "user.email"))}</th><th>{_escape(translate(locale, "admin.status"))}</th><th>{_escape(translate(locale, "user.qsoCount"))}</th><th>{_escape(translate(locale, "home.talkTime"))}</th><th>{_escape(translate(locale, "admin.actions"))}</th></tr></thead><tbody>{rows}</tbody></table></div></section>
-<section class="card"><div class="nav"><h2 style="margin:0">{_escape(translate(locale, "admin.postgresql"))}</h2><form method="post" action="/admin/postgres/analyze"><button class="button secondary" type="submit">{_escape(translate(locale, "admin.refreshPlanner"))}</button></form></div>
+<section class="card"><div class="nav"><h2 style="margin:0">{_escape(translate(locale, "admin.postgresql"))}</h2><div>{_pgadmin_link(locale)} <form class="inline" method="post" action="/admin/postgres/analyze"><button class="button secondary" type="submit">{_escape(translate(locale, "admin.refreshPlanner"))}</button></form></div></div>
 <div class="stats"><div class="stat"><small>{_escape(translate(locale, "admin.database"))}</small><strong>{_escape(postgres['database_name'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "admin.databaseSize"))}</small><strong>{_escape(postgres['database_size'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "admin.activeConnections"))}</small><strong>{_escape(postgres['active_connections'])}</strong></div><div class="stat"><small>{_escape(translate(locale, "admin.totalConnections"))}</small><strong>{_escape(postgres['total_connections'])}</strong></div></div>
 <p class="muted"><strong>{_escape(translate(locale, "admin.serverStarted"))}:</strong> {_escape(_format_datetime(postgres['server_started_at']))} · <strong>{_escape(translate(locale, "admin.serverTime"))}:</strong> {_escape(_format_datetime(postgres['server_time']))}</p>
 <p class="muted"><strong>{_escape(translate(locale, "admin.version"))}:</strong> {_escape(postgres['version'])}</p>
@@ -344,7 +354,7 @@ def admin_panel_async(request: Request) -> Response:
 <div class="stats data-quality-stats"><div class="stat"><small>{_escape(tr("admin.rawEvents"))}</small><strong id="adminQualityRaw" class="admin-loading">{loading}</strong></div><div class="stat"><small>{_escape(tr("admin.storedQsos"))}</small><strong id="adminQualityQsos" class="admin-loading">{loading}</strong></div><div class="stat"><small>{_escape(tr("admin.displayablePercentage"))}</small><strong id="adminQualityPercentage" class="admin-loading">{loading}</strong></div><div class="stat"><small>{_escape(tr("admin.lastEvent"))}</small><strong id="adminQualityLastEvent" class="admin-loading">{loading}</strong></div></div>
 <div class="table-wrap"><table><thead><tr><th>{_escape(tr("admin.dataQualityMetric"))}</th><th>{_escape(tr("admin.value"))}</th></tr></thead><tbody id="adminQualityRows"><tr><td colspan="2" class="muted">{loading}</td></tr></tbody></table></div></section>
 <section class="card"><h2>{_escape(tr("admin.registeredUsers"))}</h2><p class="muted">{_escape(tr("admin.userMetrics"))}</p><div class="table-wrap"><table><thead><tr><th>{_escape(tr("user.callsign"))}</th><th>{_escape(tr("user.name"))}</th><th>{_escape(tr("user.email"))}</th><th>{_escape(tr("admin.status"))}</th><th>{_escape(tr("user.qsoCount"))}</th><th>{_escape(tr("home.talkTime"))}</th><th>{_escape(tr("admin.actions"))}</th></tr></thead><tbody id="adminUsersRows"><tr><td colspan="7" class="muted">{loading}</td></tr></tbody></table></div></section>
-<section class="card"><div class="nav"><h2 style="margin:0">{_escape(tr("admin.postgresql"))}</h2><form method="post" action="/admin/postgres/analyze"><button class="button secondary" type="submit">{_escape(tr("admin.refreshPlanner"))}</button></form></div>
+<section class="card"><div class="nav"><h2 style="margin:0">{_escape(tr("admin.postgresql"))}</h2><div>{_pgadmin_link(locale)} <form class="inline" method="post" action="/admin/postgres/analyze"><button class="button secondary" type="submit">{_escape(tr("admin.refreshPlanner"))}</button></form></div></div>
 <div class="stats"><div class="stat"><small>{_escape(tr("admin.database"))}</small><strong id="adminDatabase" class="admin-loading">{loading}</strong></div><div class="stat"><small>{_escape(tr("admin.databaseSize"))}</small><strong id="adminDatabaseSize" class="admin-loading">{loading}</strong></div><div class="stat"><small>{_escape(tr("admin.activeConnections"))}</small><strong id="adminActiveConnections" class="admin-loading">{loading}</strong></div><div class="stat"><small>{_escape(tr("admin.totalConnections"))}</small><strong id="adminTotalConnections" class="admin-loading">{loading}</strong></div></div>
 <p class="muted"><strong>{_escape(tr("admin.serverStarted"))}:</strong> <span id="adminServerStarted" class="admin-loading">{loading}</span> · <strong>{_escape(tr("admin.serverTime"))}:</strong> <span id="adminServerTime" class="admin-loading">{loading}</span></p>
 <p class="muted"><strong>{_escape(tr("admin.version"))}:</strong> <span id="adminVersion" class="admin-loading">{loading}</span></p>

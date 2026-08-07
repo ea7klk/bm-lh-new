@@ -51,6 +51,10 @@ class Settings:
     matomo_url: str = os.getenv("MATOMO_URL", "")
     matomo_site_id: str = os.getenv("MATOMO_SITE_ID", "")
     app_public_url: str = os.getenv("APP_PUBLIC_URL", "http://localhost:8000").rstrip("/")
+    pgadmin_url: str = os.getenv(
+        "PGADMIN_PUBLIC_URL",
+        f"https://{os.getenv('PGADMIN_HOST', '')}" if os.getenv("PGADMIN_HOST") else "",
+    ).rstrip("/")
     smtp_enabled: bool = os.getenv("SMTP_ENABLED", "true").lower() == "true"
     smtp_host: str = os.getenv("SMTP_HOST", "mail.conxtor.com")
     smtp_port: int = int(os.getenv("SMTP_PORT", "587"))

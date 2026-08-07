@@ -37,6 +37,28 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  pgadmin:
+    image: dpage/pgadmin4:9.16
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${SMTP_USERNAME}
+      PGADMIN_DEFAULT_PASSWORD: ${ADMIN_PASSWORD}
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK}"
+      - "traefik.http.services.${TRAEFIK_SERVICE_NAME}-pgadmin.loadbalancer.server.port=80"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_NAME}-pgadmin.rule=Host(`${PGADMIN_HOST}`)"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_NAME}-pgadmin.entrypoints=${TRAEFIK_ENTRYPOINT}"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_NAME}-pgadmin.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_NAME}-pgadmin.service=${TRAEFIK_SERVICE_NAME}-pgadmin"
+    networks:
+      - default
+      - traefik
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
   collector:
     image: ghcr.io/ea7klk/bm-lh-new:latest
     command: bminfo-collector
@@ -83,6 +105,7 @@ services:
       MATOMO_URL: ${MATOMO_URL}
       MATOMO_SITE_ID: ${MATOMO_SITE_ID}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL}
+      PGADMIN_HOST: ${PGADMIN_HOST}
       SMTP_ENABLED: ${SMTP_ENABLED}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
@@ -113,6 +136,7 @@ services:
 
 volumes:
   postgres_data:
+  pgadmin_data:
 
 networks:
   traefik:

@@ -39,6 +39,17 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  pgadmin:
+    image: dpage/pgadmin4:9.16
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${SMTP_USERNAME}
+      PGADMIN_DEFAULT_PASSWORD: ${ADMIN_PASSWORD}
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
   collector:
     build: .
     command: bminfo-collector
@@ -85,6 +96,7 @@ services:
       MATOMO_URL: ${MATOMO_URL}
       MATOMO_SITE_ID: ${MATOMO_SITE_ID}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL}
+      PGADMIN_HOST: ${PGADMIN_HOST}
       SMTP_ENABLED: ${SMTP_ENABLED}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
@@ -106,3 +118,4 @@ services:
 
 volumes:
   postgres_data:
+  pgadmin_data:
