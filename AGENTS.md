@@ -5,7 +5,7 @@ This guidance applies to the entire repository.
 ## Project
 
 This repository contains one application: a Python 3.12 Django and Channels
-service in `django_app/`. It collects BrandMeister LastHeard events, stores them
+service in `bminfo/`. It collects BrandMeister LastHeard events, stores them
 in PostgreSQL, and serves dashboards, live updates, reports, account flows, and
 administrative tools.
 
@@ -14,15 +14,15 @@ Read `README.md` before making substantial changes.
 ## Architecture
 
 - Keep project configuration, root routing, and ASGI/WSGI setup in
-  `django_app/config/`.
+  `bminfo/config/`.
 - Keep application models, forms, views, consumers, collector logic, and admin
-  tools in `django_app/dashboard/`.
+  tools in `bminfo/dashboard/`.
 - Put schema changes in Django migrations. Never edit an applied migration to
   change current behavior; create a new migration.
 - Put operator workflows in focused Django management commands under
-  `django_app/dashboard/management/commands/`.
-- Keep HTML in `django_app/templates/` and shared translations in
-  `django_app/dashboard/translations.json`.
+  `bminfo/dashboard/management/commands/`.
+- Keep HTML in `bminfo/templates/` and shared translations in
+  `bminfo/dashboard/translations.json`.
 - Preserve the Channels ASGI routing used by live-QSO websocket consumers.
 
 ## Coding conventions
@@ -31,7 +31,7 @@ Read `README.md` before making substantial changes.
   module boundaries. Prefer focused changes over unrelated refactors.
 - Use the Django ORM and transactions for database access. Avoid raw SQL unless
   the ORM cannot express the operation clearly or efficiently.
-- Keep configuration environment-backed through `django_app/config/settings.py`.
+- Keep configuration environment-backed through `bminfo/config/settings.py`.
   Document new variables in `.env.example`, `README.md`, and both Compose files.
 - Update every supported locale when changing user-visible text.
 - Never log or commit passwords, secret keys, SMTP credentials, cookies, or
@@ -54,14 +54,14 @@ Read `README.md` before making substantial changes.
 Install dependencies with:
 
 ```bash
-python -m pip install -r django_app/requirements.txt
+python -m pip install -r bminfo/requirements.txt
 ```
 
 Run the relevant checks before handing off changes:
 
 ```bash
-python django_app/manage.py check
-python django_app/manage.py makemigrations --check --dry-run
+python bminfo/manage.py check
+python bminfo/manage.py makemigrations --check --dry-run
 ```
 
 Add regression tests for behavior changes and run Django tests against the

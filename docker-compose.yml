@@ -35,7 +35,7 @@ services:
   web:
     build:
       context: .
-      dockerfile: django_app/Dockerfile
+      dockerfile: bminfo/Dockerfile
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-false}

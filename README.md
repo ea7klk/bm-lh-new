@@ -7,7 +7,7 @@ management, and administrative maintenance tools.
 ## Structure
 
 ```text
-django_app/
+bminfo/
 ├── config/                 Django settings, URLs, and ASGI/WSGI entry points
 ├── dashboard/              Models, views, collector, reports, and admin tools
 │   ├── management/commands Django management commands
@@ -50,21 +50,21 @@ dependencies and set the database variables used in `config/settings.py`:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -r django_app/requirements.txt
+python -m pip install -r bminfo/requirements.txt
 export DJANGO_SECRET_KEY=development-only
 export DJANGO_POSTGRES_HOST=localhost
 export DJANGO_POSTGRES_DB=bminfo
 export DJANGO_POSTGRES_USER=bminfo
 export DJANGO_POSTGRES_PASSWORD=bminfo
-python django_app/manage.py migrate
-python django_app/manage.py bootstrap_admin
-python django_app/manage.py runserver
+python bminfo/manage.py migrate
+python bminfo/manage.py bootstrap_admin
+python bminfo/manage.py runserver
 ```
 
 Run the collector separately during local development:
 
 ```bash
-python django_app/manage.py collect_brandmeister
+python bminfo/manage.py collect_brandmeister
 ```
 
 ## Configuration
@@ -110,8 +110,8 @@ ID so reconnects and duplicate deliveries do not duplicate transmissions.
 ## Development checks
 
 ```bash
-python django_app/manage.py check
-python django_app/manage.py makemigrations --check --dry-run
+python bminfo/manage.py check
+python bminfo/manage.py makemigrations --check --dry-run
 ```
 
 Add Django tests alongside new behavior and run them with `manage.py test` when

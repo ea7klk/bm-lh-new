@@ -24,10 +24,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: django_app/requirements.txt
+          cache-dependency-path: bminfo/requirements.txt
 
       - name: Install dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -r django_app/requirements.txt
+        run: python -m pip install --upgrade pip && python -m pip install -r bminfo/requirements.txt
 
       - name: Check Django application
         env:
@@ -37,8 +37,8 @@ jobs:
           DJANGO_POSTGRES_PASSWORD: ci
           DJANGO_POSTGRES_HOST: localhost
         run: |
-          python django_app/manage.py check
-          python django_app/manage.py makemigrations --check --dry-run
+          python bminfo/manage.py check
+          python bminfo/manage.py makemigrations --check --dry-run
 
   publish-image:
     name: Publish Docker image
@@ -78,7 +78,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./django_app/Dockerfile
+          file: ./bminfo/Dockerfile
           push: true
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
