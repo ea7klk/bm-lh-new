@@ -10,7 +10,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from .models import BMEvent
-from .sessionizer import MAX_TALKGROUP_ID, QSO
+from .sessionizer import MAX_TALKGROUP_ID, NON_QSO_DESTINATION_IDS, QSO
 from .talkgroups import PINNED_TALKGROUPS
 
 
@@ -114,6 +114,17 @@ class PostgresStore:
             with self.connection.cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_xact_lock(%s)", (918273645,))
                 cursor.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
+                # Existing legacy databases were created with a foreign key.
+                # Drop it during initialization while preserving the scalar
+                # identifier for audit correlation.
+                cursor.execute(
+                    "ALTER TABLE qsos DROP CONSTRAINT IF EXISTS qsos_raw_event_id_fkey"
+                )
+                cursor.execute("ALTER TABLE qsos ALTER COLUMN raw_event_id DROP NOT NULL")
+                cursor.execute(
+                    "DELETE FROM qsos WHERE destination_id = ANY(%s)",
+                    ([DISPLAY_EXCLUDED_DESTINATION_ID, *sorted(NON_QSO_DESTINATION_IDS)],),
+                )
             self._ensure_pinned_talkgroups()
             self._backfill_pinned_talkgroup_qsos(kerchunk_threshold_seconds)
 
@@ -257,6 +268,12 @@ class PostgresStore:
             )
             raw_event_id = cursor.fetchone()[0]
 
+            if event.destination_id in NON_QSO_DESTINATION_IDS:
+                # A later service-destination update must not leave an older
+                # displayable row for the same session behind.
+                cursor.execute("DELETE FROM qsos WHERE session_id = %s", (event.session_id,))
+                return False
+
             store_qso = qso is not None and self._qso_is_displayable(cursor, qso)
             if store_qso:
                 self._insert_qso(cursor, raw_event_id, qso)
@@ -335,6 +352,7 @@ class PostgresStore:
         if (
             qso.destination_id is None
             or qso.destination_id == DISPLAY_EXCLUDED_DESTINATION_ID
+            or qso.destination_id in NON_QSO_DESTINATION_IDS
             or qso.destination_id > MAX_TALKGROUP_ID
         ):
             return False
@@ -478,7 +496,7 @@ class PostgresStore:
         clauses = [
             "q.start_at >= %s",
             "q.destination_id IS NOT NULL",
-            "q.destination_id <> 9",
+            "q.destination_id NOT IN (9, 4000, 9990)",
             f"{NAMED_DESTINATION_SQL} IS NOT NULL",
         ]
         params: list[Any] = [bucket_seconds, start_time]
@@ -562,7 +580,7 @@ class PostgresStore:
         clauses = [
             "q.start_at >= %s",
             "q.destination_id IS NOT NULL",
-            "q.destination_id <> 9",
+            "q.destination_id NOT IN (9, 4000, 9990)",
             f"{NAMED_DESTINATION_SQL} IS NOT NULL",
         ]
         params: list[Any] = [start_time]
@@ -621,7 +639,10 @@ class PostgresStore:
         clauses = [
             "q.start_at >= %s",
             "q.source_call IS NOT NULL",
-            "q.destination_id <> 9",
+            "q.source_call <> ''",
+            "LOWER(q.source_call) <> 'unknown'",
+            "q.source_call <> '—'",
+            "q.destination_id NOT IN (9, 4000, 9990)",
             f"{NAMED_DESTINATION_SQL} IS NOT NULL",
         ]
         params: list[Any] = [start_time]
@@ -673,7 +694,7 @@ class PostgresStore:
         clauses = [
             "q.start_at >= %s",
             "q.destination_id IS NOT NULL",
-            "q.destination_id <> 9",
+            "q.destination_id NOT IN (9, 4000, 9990)",
             f"{NAMED_DESTINATION_SQL} IS NOT NULL",
         ]
         params: list[Any] = [start_time]
@@ -1256,7 +1277,7 @@ class PostgresStore:
         clauses = [
             "q.start_at >= %s",
             "q.destination_id IS NOT NULL",
-            "q.destination_id <> 9",
+            "q.destination_id NOT IN (9, 4000, 9990)",
             f"{NAMED_DESTINATION_SQL} IS NOT NULL",
         ]
         params: list[Any] = [start_time]
@@ -1715,7 +1736,7 @@ class PostgresStore:
                 """,
                 (
                     float(MAX_PLAUSIBLE_INGESTION_DELAY_SECONDS),
-                    float(settings.kerchunk_threshold_seconds),
+                    float(settings.raw_event_kerchunk_threshold_seconds),
                     float(UNUSUALLY_LONG_DURATION_SECONDS),
                 ),
             )
@@ -1864,10 +1885,9 @@ class PostgresStore:
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT COUNT(DISTINCT r.id)::bigint,
-                       COUNT(q.session_id)::bigint
+                SELECT COUNT(*)::bigint,
+                       0::bigint
                 FROM raw_events r
-                LEFT JOIN qsos q ON q.raw_event_id = r.id
                 WHERE r.received_at < now() - (%s * interval '1 month')
                 """,
                 (months,),
@@ -1899,12 +1919,7 @@ class PostgresStore:
                            ROW_NUMBER() OVER (
                                PARTITION BY r.session_id, lower(r.event_type)
                                ORDER BY
-                                   CASE WHEN EXISTS (
-                                       SELECT 1
-                                       FROM qsos q
-                                       WHERE q.raw_event_id = r.id
-                                   ) THEN 0 ELSE 1 END,
-                                   CASE WHEN r.start_at IS NOT NULL
+                                       CASE WHEN r.start_at IS NOT NULL
                                              AND r.stop_at IS NOT NULL
                                              AND r.stop_at >= r.start_at + (%s * interval '1 second')
                                         THEN 0 ELSE 1 END,
@@ -1947,10 +1962,9 @@ class PostgresStore:
     ) -> dict[str, int]:
         """Delete irrelevant raw packets and maintain the raw table.
 
-        Keep one canonical row per session and event type. Prefer a row
-        referenced by a QSO, then a valid above-threshold row, then the newest
-        row. Any historical row referenced by a QSO is retained defensively so
-        the foreign-key relationship remains intact.
+        Keep one canonical row per session and event type. Prefer a valid
+        above-threshold row, then the newest row. QSOs are independent and do
+        not prevent raw-event cleanup.
         """
         with self.connection.transaction():
             with self.connection.cursor() as cursor:
@@ -1973,11 +1987,6 @@ class PostgresStore:
                                ROW_NUMBER() OVER (
                                    PARTITION BY r.session_id, lower(r.event_type)
                                    ORDER BY
-                                       CASE WHEN EXISTS (
-                                           SELECT 1
-                                           FROM qsos q
-                                           WHERE q.raw_event_id = r.id
-                                       ) THEN 0 ELSE 1 END,
                                        CASE WHEN r.start_at IS NOT NULL
                                                  AND r.stop_at IS NOT NULL
                                                  AND r.stop_at >= r.start_at + (%s * interval '1 second')
@@ -2002,11 +2011,6 @@ class PostgresStore:
                         DELETE FROM raw_events r
                         USING candidates c
                         WHERE r.id = c.id
-                          AND NOT EXISTS (
-                              SELECT 1
-                              FROM qsos q
-                              WHERE q.raw_event_id = r.id
-                          )
                         RETURNING r.id
                     )
                     SELECT
@@ -2088,6 +2092,7 @@ class PostgresStore:
                         LEFT JOIN talkgroups t ON t.talkgroup_id = d.destination_id
                         WHERE d.destination_id IS NOT NULL
                           AND d.destination_id <> %s
+                          AND d.destination_id NOT IN (4000, 9990)
                           AND d.destination_id <= %s
                           AND (
                               NULLIF(BTRIM(d.destination_name), '') IS NOT NULL
@@ -2152,22 +2157,10 @@ class PostgresStore:
         }
 
     def clear_old_raw_events(self, months: int) -> dict[str, int]:
-        """Delete old raw events and their dependent QSOs, then compact both tables."""
+        """Delete old raw events without changing independent QSOs."""
         months = self._validate_retention_months(months)
         with self.connection.transaction():
             with self.connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    DELETE FROM qsos
-                    WHERE raw_event_id IN (
-                        SELECT id
-                        FROM raw_events
-                        WHERE received_at < now() - (%s * interval '1 month')
-                    )
-                    """,
-                    (months,),
-                )
-                qsos_deleted = cursor.rowcount
                 cursor.execute(
                     """
                     DELETE FROM raw_events
@@ -2177,11 +2170,11 @@ class PostgresStore:
                 )
                 raw_events_deleted = cursor.rowcount
 
-        self._compact_tables("raw_events", "qsos")
+        self._compact_tables("raw_events")
         return {
             "months": months,
             "raw_events_deleted": int(raw_events_deleted),
-            "qsos_deleted": int(qsos_deleted),
+            "qsos_deleted": 0,
         }
 
     def clear_old_qsos(self, months: int) -> dict[str, int]:

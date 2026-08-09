@@ -1,7 +1,6 @@
 import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from zoneinfo import ZoneInfo
 
 import bminfo.web as web
 
@@ -46,15 +45,15 @@ def test_status_reports_database_collector_and_usage_metrics(monkeypatch):
     assert payload["active_users"] == 2
 
 
-def test_nightly_raw_cleanup_is_scheduled_at_two_local_time():
-    before = datetime(2026, 8, 4, 0, 30, tzinfo=ZoneInfo("Europe/Madrid")).astimezone(timezone.utc)
-    after = datetime(2026, 8, 4, 3, 30, tzinfo=ZoneInfo("Europe/Madrid")).astimezone(timezone.utc)
+def test_nightly_raw_cleanup_is_scheduled_at_two_utc():
+    before = datetime(2026, 8, 4, 0, 30, tzinfo=timezone.utc)
+    after = datetime(2026, 8, 4, 3, 30, tzinfo=timezone.utc)
 
-    before_target = web._next_nightly_raw_events_cleanup(before).astimezone(ZoneInfo("Europe/Madrid"))
-    after_target = web._next_nightly_raw_events_cleanup(after).astimezone(ZoneInfo("Europe/Madrid"))
+    before_target = web._next_nightly_raw_events_cleanup(before)
+    after_target = web._next_nightly_raw_events_cleanup(after)
 
-    assert before_target == datetime(2026, 8, 4, 2, 0, tzinfo=ZoneInfo("Europe/Madrid"))
-    assert after_target == datetime(2026, 8, 5, 2, 0, tzinfo=ZoneInfo("Europe/Madrid"))
+    assert before_target == datetime(2026, 8, 4, 2, 0, tzinfo=timezone.utc)
+    assert after_target == datetime(2026, 8, 5, 2, 0, tzinfo=timezone.utc)
 
 
 def test_status_returns_degraded_response_when_collector_is_stale(monkeypatch):

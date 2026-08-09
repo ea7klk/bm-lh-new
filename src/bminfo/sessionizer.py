@@ -7,6 +7,8 @@ from .models import BMEvent
 
 
 MAX_TALKGROUP_ID = 999_999
+# BrandMeister service destinations, not user/talkgroup QSOs.
+NON_QSO_DESTINATION_IDS = frozenset({4000, 9990})
 
 
 @dataclass(frozen=True)
@@ -57,7 +59,10 @@ def make_qso(
     """
     if event.event_type.casefold() != "session-stop":
         return None
-    if excluded_destination_id is not None and event.destination_id == excluded_destination_id:
+    if (
+        event.destination_id in NON_QSO_DESTINATION_IDS
+        or (excluded_destination_id is not None and event.destination_id == excluded_destination_id)
+    ):
         return None
     if event.destination_id is not None and event.destination_id > MAX_TALKGROUP_ID:
         return None

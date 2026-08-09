@@ -1,0 +1,123 @@
+{% extends "dashboard/base.html" %}
+{% block title %}{{ labels.live.title|default:'Live QSOs' }} · BrandMeister Lastheard{% endblock %}
+{% block content %}
+<section class="panel section">
+  <h2 style="text-align:left">{{ labels.live.title|default:'Live QSOs' }}</h2>
+  <div class="controls">
+    <div class="control"><label>{{ labels.home.continent|default:'Continent' }}</label><select id="liveContinent"><option value="">{{ labels.home.allContinents|default:'All continents' }}</option></select></div>
+    <div class="control"><label>{{ labels.home.country|default:'Country' }}</label><select id="liveCountry"><option value="">{{ labels.home.allCountries|default:'All countries' }}</option></select></div>
+    <div class="control"><label>Callsign</label><input id="liveCallsign" placeholder="e.g. EA7KLK"></div>
+    <div class="control"><label>Talkgroups</label><div id="liveTalkgroups" class="talkgroup-checkboxes"><label><input type="checkbox" value="all" checked> All Talkgroups</label></div></div>
+  </div>
+  <p id="liveState">Connecting…</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Callsign</th><th>Talkgroup</th><th>Time ago</th><th>Duration</th></tr></thead>
+    <tbody id="liveRows"></tbody>
+  </table></div>
+</section>
+<script>
+const esc=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c])),metadata=JSON.parse(document.getElementById('metadataTranslations').textContent),collator=new Intl.Collator(document.documentElement.lang||'en',{sensitivity:'base',numeric:true}),displayContinent=value=>metadata.continents?.[value]||value,displayCountry=(value,fallback)=>metadata.countries?.[value]||fallback||value;
+const rows=document.getElementById('liveRows');
+let socket;
+let liveItems=[];
+
+function filters(){
+  return {
+    continent:document.getElementById('liveContinent').value,
+    country:document.getElementById('liveCountry').value,
+    callsign:document.getElementById('liveCallsign').value,
+    talkgroups:[...document.querySelectorAll('#liveTalkgroups input:not([value="all"]):checked')].map(x=>x.value)
+  };
+}
+
+function sendFilters(){
+  if(socket?.readyState===WebSocket.OPEN) socket.send(JSON.stringify({type:'filters',filters:filters()}));
+}
+
+function selectedTalkgroups(){
+  return [...document.querySelectorAll('#liveTalkgroups input:not([value="all"]):checked')].map(x=>x.value);
+}
+
+function bindTalkgroupInputs(){
+  document.querySelectorAll('#liveTalkgroups input').forEach(input=>input.addEventListener('change',()=>{
+    const all=document.querySelector('#liveTalkgroups input[value="all"]');
+    if(input.value==='all'&&input.checked) document.querySelectorAll('#liveTalkgroups input:not([value="all"])').forEach(item=>item.checked=false);
+    if(input.value!=='all'&&input.checked) all.checked=false;
+    if(!selectedTalkgroups().length) all.checked=true;
+    sendFilters();
+  }));
+}
+
+async function loadCountries(){
+  const continent=document.getElementById('liveContinent').value;
+  const query=continent?'?continent='+encodeURIComponent(continent):'';
+  const countries=await fetch('/api/countries/'+query).then(response=>response.json());
+  countries.sort((a,b)=>collator.compare(displayCountry(a.value,a.label),displayCountry(b.value,b.label)));
+  const allCountriesLabel=document.getElementById('liveCountry').options[0]?.textContent||'All countries';
+  document.getElementById('liveCountry').innerHTML=`<option value="">${esc(allCountriesLabel)}</option>`+countries.map(item=>`<option value="${esc(item.value)}">${esc(displayCountry(item.value,item.label))}</option>`).join('');
+}
+
+async function loadTalkgroups(){
+  const selected=selectedTalkgroups();
+  const params=new URLSearchParams({timeRange:'30m'});
+  const continent=document.getElementById('liveContinent').value;
+  const country=document.getElementById('liveCountry').value;
+  if(continent) params.set('continent',continent);
+  if(country) params.set('country',country);
+  const talkgroups=await fetch('/api/talkgroups/?'+params).then(response=>response.json());
+  document.getElementById('liveTalkgroups').innerHTML='<label><input type="checkbox" value="all" checked> All Talkgroups</label>'+talkgroups.map(item=>`<label><input type="checkbox" value="${esc(item.id)}"> ${esc(item.name)} (${esc(item.id)})</label>`).join('');
+  selected.forEach(id=>{const input=document.querySelector(`#liveTalkgroups input[value="${CSS.escape(id)}"]`);if(input) input.checked=true;});
+  const all=document.querySelector('#liveTalkgroups input[value="all"]');
+  if(selectedTalkgroups().length) all.checked=false;
+  bindTalkgroupInputs();
+}
+
+function render(){
+  rows.innerHTML=liveItems.map(r=>{
+    const name=r.destinationName||'—';
+    const id=r.destinationId??'—';
+    const duration=Number(r.duration);
+    const durationText=Number.isFinite(duration)?`${Math.round(duration)} sec`:'—';
+    return `<tr><td>${esc(r.sourceCall)}</td><td>${esc(name)} (${esc(id)})</td><td>${esc(r.timeAgo)}</td><td>${durationText}</td></tr>`;
+  }).join('')||'<tr><td colspan="4">No QSOs</td></tr>';
+}
+
+function replaceSnapshot(items){
+  liveItems=(items||[]).slice(0,100);
+  render();
+}
+
+function prependQso(item){
+  liveItems=[item,...liveItems.filter(row=>row.sessionId!==item.sessionId)].slice(0,100);
+  render();
+}
+
+function connect(){
+  socket=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws/live-qsos/');
+  socket.onopen=()=>{
+    document.getElementById('liveState').textContent='Connected';
+    socket.send(JSON.stringify({type:'filters',filters:filters()}));
+  };
+  socket.onmessage=e=>{
+    const message=JSON.parse(e.data);
+    if(message.type==='snapshot')replaceSnapshot(message.qsos);
+    if(message.type==='qso')prependQso(message.qso);
+  };
+  socket.onclose=()=>{
+    document.getElementById('liveState').textContent='Reconnecting…';
+    setTimeout(connect,1500);
+  };
+}
+
+connect();
+document.getElementById('liveContinent').addEventListener('change',async()=>{await loadCountries();await loadTalkgroups();sendFilters();});
+document.getElementById('liveCountry').addEventListener('change',async()=>{await loadTalkgroups();sendFilters();});
+document.getElementById('liveCallsign').addEventListener('change',sendFilters);
+fetch('/api/continents/').then(response=>response.json()).then(continents=>{
+  continents.sort((a,b)=>collator.compare(displayContinent(a),displayContinent(b)));
+  const allContinentsLabel=document.getElementById('liveContinent').options[0]?.textContent||'All continents';
+  document.getElementById('liveContinent').innerHTML=`<option value="">${esc(allContinentsLabel)}</option>`+continents.map(item=>`<option value="${esc(item)}">${esc(displayContinent(item))}</option>`).join('');
+  return loadCountries();
+}).then(loadTalkgroups);
+</script>
+{% endblock %}

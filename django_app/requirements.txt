@@ -1,0 +1,10 @@
+Django==6.1
+psycopg[binary]>=3.2,<4
+bcrypt>=4.1,<5
+gunicorn>=23,<24
+daphne>=4.1,<5
+channels>=4.2,<5
+openpyxl>=3.1,<4
+reportlab>=4.2,<5
+python-socketio[client]>=5.11,<6
+requests>=2.31,<3

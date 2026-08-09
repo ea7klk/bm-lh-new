@@ -158,7 +158,7 @@ def about_page(request: Request) -> HTMLResponse:
       <h2 style="font-size:17px">{_escape(translate(locale, "about.author"))}</h2>
       <p>{_escape(translate(locale, "about.authorName"))}</p>
       <h2 style="font-size:17px;margin-top:22px">{_escape(translate(locale, "about.copyright"))}</h2>
-      <p>© 2026 Volker Kerkhoff</p>
+      <p>{_escape(translate(locale, "about.copyrightText"))}</p>
     </div>
     <div style="padding:18px;border-radius:10px;background:#f8f9ff">
       <h2 style="font-size:17px">{_escape(translate(locale, "about.license"))}</h2>

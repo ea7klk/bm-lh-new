@@ -43,12 +43,12 @@
       "month": "month",
       "months": "months",
       "eligible": "Eligible",
-      "dependentQsos": "dependent QSOs",
+      "qsosUnaffected": "QSOs are unaffected",
       "deleteButton": "Delete and compact",
-      "rawConfirm": "Delete {raw} raw events older than {period} and their {qsos} dependent QSOs, then compact the tables?",
+      "rawConfirm": "Delete {raw} raw events older than {period}, then compact the raw-events table?",
       "qsoConfirm": "Delete {qsos} QSOs older than {period}, then compact the QSO table?",
       "rebuildSuccess": "QSOs rebuilt: {count} records from {raw} raw events.",
-      "rawDeleteSuccess": "Deleted {count} raw events older than {period} and {qsos} dependent QSOs.",
+      "rawDeleteSuccess": "Deleted {count} raw events older than {period}. QSOs were left unchanged.",
       "qsoDeleteSuccess": "Deleted {count} QSOs older than {period}.",
       "success": "Success"
     }
@@ -97,12 +97,12 @@
       "month": "mes",
       "months": "meses",
       "eligible": "Elegibles",
-      "dependentQsos": "QSOs dependientes",
+      "qsosUnaffected": "Los QSOs no se modifican",
       "deleteButton": "Borrar y compactar",
-      "rawConfirm": "¿Borrar {raw} eventos sin procesar de más de {period} y sus {qsos} QSOs dependientes, y compactar las tablas?",
+      "rawConfirm": "¿Borrar {raw} eventos sin procesar de más de {period} y compactar la tabla de eventos sin procesar?",
       "qsoConfirm": "¿Borrar {qsos} QSOs de más de {period} y compactar la tabla QSOs?",
       "rebuildSuccess": "QSOs reconstruidos: {count} registros desde {raw} eventos sin procesar.",
-      "rawDeleteSuccess": "Borrados {count} eventos sin procesar de más de {period} y {qsos} QSOs dependientes.",
+      "rawDeleteSuccess": "Borrados {count} eventos sin procesar de más de {period}. Los QSOs no se han modificado.",
       "qsoDeleteSuccess": "Borrados {count} QSOs de más de {period}.",
       "success": "Correcto"
     }
@@ -151,12 +151,12 @@
       "month": "Monat",
       "months": "Monate",
       "eligible": "Betroffen",
-      "dependentQsos": "abhängige QSOs",
+      "qsosUnaffected": "QSOs bleiben unverändert",
       "deleteButton": "Löschen und komprimieren",
-      "rawConfirm": "{raw} Rohereignisse älter als {period} und ihre {qsos} abhängigen QSOs löschen und Tabellen komprimieren?",
+      "rawConfirm": "{raw} Rohereignisse älter als {period} löschen und die Rohereignistabelle komprimieren?",
       "qsoConfirm": "{qsos} QSOs älter als {period} löschen und die QSOs-Tabelle komprimieren?",
       "rebuildSuccess": "QSOs neu aufgebaut: {count} Datensätze aus {raw} Rohereignissen.",
-      "rawDeleteSuccess": "{count} Rohereignisse älter als {period} und {qsos} abhängige QSOs gelöscht.",
+      "rawDeleteSuccess": "{count} Rohereignisse älter als {period} gelöscht. QSOs bleiben unverändert.",
       "qsoDeleteSuccess": "{count} QSOs älter als {period} gelöscht.",
       "success": "Erfolgreich"
     }
@@ -205,12 +205,12 @@
       "month": "mois",
       "months": "mois",
       "eligible": "Concernés",
-      "dependentQsos": "QSOs dépendants",
+      "qsosUnaffected": "Les QSOs restent inchangés",
       "deleteButton": "Supprimer et compacter",
-      "rawConfirm": "Supprimer {raw} événements bruts de plus de {period} et leurs {qsos} QSOs dépendants, puis compacter les tables ?",
+      "rawConfirm": "Supprimer {raw} événements bruts de plus de {period}, puis compacter la table des événements bruts ?",
       "qsoConfirm": "Supprimer {qsos} QSOs de plus de {period}, puis compacter la table QSOs ?",
       "rebuildSuccess": "QSOs reconstruits : {count} enregistrements depuis {raw} événements bruts.",
-      "rawDeleteSuccess": "{count} événements bruts de plus de {period} et {qsos} QSOs dépendants supprimés.",
+      "rawDeleteSuccess": "{count} événements bruts de plus de {period} supprimés. Les QSOs restent inchangés.",
       "qsoDeleteSuccess": "{count} QSOs de plus de {period} supprimés.",
       "success": "Réussi"
     }

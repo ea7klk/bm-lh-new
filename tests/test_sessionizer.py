@@ -50,6 +50,22 @@ def test_local_talkgroup_is_excluded_by_default():
     assert make_qso(parsed) is None
 
 
+def test_service_destinations_are_excluded_from_qsos():
+    for destination_id in (4000, 9990):
+        parsed = parse_event(
+            {
+                "payload": {
+                    "Event": "Session-Stop",
+                    "SessionID": f"service-{destination_id}",
+                    "DestinationID": destination_id,
+                    "Start": 100,
+                    "Stop": 110,
+                }
+            }
+        )
+        assert make_qso(parsed) is None
+
+
 def test_seven_digit_personal_destination_is_not_consolidated_as_qso():
     parsed = parse_event(
         {

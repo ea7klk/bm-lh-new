@@ -167,11 +167,11 @@ def _admin_retention_row(
 ) -> str:
     if kind == "raw-events":
         count = counts["raw_events"]
-        detail = f'{count} raw events · {counts["dependent_qsos"]} {translate(locale, "adminMaintenance.dependentQsos")}'
+        detail = f'{count} raw events · {translate(locale, "adminMaintenance.qsosUnaffected")}'
         confirmation = translate(locale, "adminMaintenance.rawConfirm").format(
             raw=count,
             period=_admin_retention_period(locale, months),
-            qsos=counts["dependent_qsos"],
+            qsos=0,
         )
     else:
         count = counts["qsos"]
@@ -213,7 +213,7 @@ def _legacy_admin_panel(request: Request) -> Response:
     stats = get_store().admin_statistics()
     users = get_store().list_users()
     postgres = get_store().postgres_overview()
-    maintenance = get_store().maintenance_overview(settings.kerchunk_threshold_seconds)
+    maintenance = get_store().maintenance_overview(settings.raw_event_kerchunk_threshold_seconds)
     retention = {months: get_store().retention_counts(months) for months in ADMIN_RETENTION_MONTHS}
     query_seconds = perf_counter() - query_started
     rows = "".join(_admin_user_row(user, locale) for user in users) or f'<tr><td colspan="7" class="muted">{_escape(translate(locale, "admin.registeredUsers"))}</td></tr>'
@@ -225,7 +225,7 @@ def _legacy_admin_panel(request: Request) -> Response:
         json.dumps(
             translate(locale, "adminMaintenance.irrelevantRawConfirm").format(
                 count=maintenance["irrelevant_raw_events"],
-                threshold=settings.kerchunk_threshold_seconds,
+                threshold=settings.raw_event_kerchunk_threshold_seconds,
             )
         )
     )
@@ -326,8 +326,8 @@ def admin_panel_async(request: Request) -> Response:
         "irrelevantRawConfirm": tr("adminMaintenance.irrelevantRawConfirm"),
         "rawConfirm": tr("adminMaintenance.rawConfirm"),
         "qsoConfirm": tr("adminMaintenance.qsoConfirm"),
-        "dependentQsos": tr("adminMaintenance.dependentQsos"),
-        "kerchunkThreshold": settings.kerchunk_threshold_seconds,
+        "qsosUnaffected": tr("adminMaintenance.qsosUnaffected"),
+        "kerchunkThreshold": settings.raw_event_kerchunk_threshold_seconds,
         "periods": {str(months): _admin_retention_period(locale, months) for months in ADMIN_RETENTION_MONTHS},
     }
     client_text_json = json.dumps(client_text, ensure_ascii=False).replace("</", "<\\/")
@@ -338,7 +338,7 @@ def admin_panel_async(request: Request) -> Response:
         json.dumps(
             tr("adminMaintenance.irrelevantRawConfirm")
             .replace("{count}", "0")
-            .replace("{threshold}", str(settings.kerchunk_threshold_seconds))
+            .replace("{threshold}", str(settings.raw_event_kerchunk_threshold_seconds))
         )
     )
     content = f"""
@@ -418,7 +418,7 @@ def admin_panel_async(request: Request) -> Response:
   }}
   function renderRetention(kind, months, data) {{
     const isRaw = kind === "raw-events"; const count = isRaw ? data.raw_events : data.qsos;
-    const detail = isRaw ? String(data.raw_events) + " raw events · " + String(data.dependent_qsos) + " " + text.dependentQsos : String(data.qsos) + " QSOs";
+    const detail = isRaw ? String(data.raw_events) + " raw events · " + text.qsosUnaffected : String(data.qsos) + " QSOs";
     setValue("admin-" + kind + "-" + months + "-detail", text.eligible + ": " + detail);
     const form = document.querySelector('form[data-kind="' + kind + '"][data-months="' + months + '"]');
     if (form) {{ form.dataset.confirm = replaceTemplate(isRaw ? text.rawConfirm : text.qsoConfirm, {{raw: data.raw_events, qsos: data.qsos, period: text.periods[String(months)]}}); confirmForms(); }}

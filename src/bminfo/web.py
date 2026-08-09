@@ -7,7 +7,6 @@ import html
 import logging
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
@@ -109,33 +108,33 @@ def shutdown() -> None:
 def _next_nightly_raw_events_cleanup(
     now: datetime | None = None,
 ) -> datetime:
-    """Return the next 02:00 local-time cleanup instant in UTC."""
-    local_now = (now or datetime.now(tz=UTC)).astimezone(_calendar_timezone())
-    target = local_now.replace(
+    """Return the next 02:00 UTC cleanup instant."""
+    utc_now = (now or datetime.now(tz=UTC)).astimezone(UTC)
+    target = utc_now.replace(
         hour=NIGHTLY_RAW_EVENTS_CLEANUP_HOUR,
         minute=0,
         second=0,
         microsecond=0,
     )
-    if local_now >= target:
+    if utc_now >= target:
         target += timedelta(days=1)
-    return target.astimezone(UTC)
+    return target
 
 
 async def _nightly_raw_events_cleanup_loop() -> None:
-    """Run irrelevant raw-event cleanup once per local calendar day."""
+    """Run irrelevant raw-event cleanup once per UTC calendar day."""
     while True:
         target = _next_nightly_raw_events_cleanup()
         delay_seconds = max((target - datetime.now(tz=UTC)).total_seconds(), 1.0)
         logger.info(
             "scheduled irrelevant raw-event cleanup for %s",
-            target.astimezone(_calendar_timezone()).isoformat(),
+            target.isoformat(),
         )
         await asyncio.sleep(delay_seconds)
         operation = asyncio.create_task(
             asyncio.to_thread(
                 get_store().clear_irrelevant_raw_events,
-                settings.kerchunk_threshold_seconds,
+                settings.raw_event_kerchunk_threshold_seconds,
                 try_advisory_lock=True,
             )
         )
@@ -227,21 +226,14 @@ def get_store() -> PostgresStore:
     return store
 
 
-def _calendar_timezone() -> Any:
-    try:
-        return ZoneInfo(settings.app_timezone)
-    except ZoneInfoNotFoundError:
-        return UTC
-
-
 def calendar_range_bounds(time_range: str, now: datetime | None = None) -> tuple[datetime, datetime] | None:
     if time_range not in CALENDAR_TIME_RANGES:
         return None
-    local_now = (now or datetime.now(tz=UTC)).astimezone(_calendar_timezone())
-    today = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    utc_now = (now or datetime.now(tz=UTC)).astimezone(UTC)
+    today = utc_now.replace(hour=0, minute=0, second=0, microsecond=0)
     if time_range == "today":
         start = today
-        end = local_now
+        end = utc_now
     elif time_range == "yesterday":
         start = today - timedelta(days=1)
         end = today
@@ -252,7 +244,7 @@ def calendar_range_bounds(time_range: str, now: datetime | None = None) -> tuple
     else:
         end = today.replace(day=1)
         start = (end - timedelta(days=1)).replace(day=1)
-    return start.astimezone(UTC), end.astimezone(UTC)
+    return start, end
 
 
 def start_time(time_range: str) -> datetime:

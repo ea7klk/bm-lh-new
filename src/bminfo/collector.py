@@ -39,18 +39,14 @@ def _talkgroup_sync_loop(store: PostgresStore, stop_event: threading.Event) -> N
         stop_event.wait(interval_seconds)
 
 
-def _collector_heartbeat_loop(stop_event: threading.Event) -> None:
+def _collector_heartbeat_loop(store: PostgresStore, stop_event: threading.Event) -> None:
     interval_seconds = max(settings.collector_heartbeat_seconds, 5)
-    heartbeat_store = PostgresStore(settings.database_url)
-    try:
-        while not stop_event.is_set():
-            try:
-                heartbeat_store.heartbeat("collector")
-            except Exception:
-                logger.exception("collector heartbeat update failed")
-            stop_event.wait(interval_seconds)
-    finally:
-        heartbeat_store.close()
+    while not stop_event.is_set():
+        try:
+            store.heartbeat("collector")
+        except Exception:
+            logger.exception("collector heartbeat update failed")
+        stop_event.wait(interval_seconds)
 
 
 def run() -> None:
@@ -69,7 +65,7 @@ def run() -> None:
     )
     heartbeat_thread = threading.Thread(
         target=_collector_heartbeat_loop,
-        args=(stop_event,),
+        args=(store, stop_event),
         name="collector-heartbeat",
         daemon=True,
     )
@@ -131,14 +127,14 @@ def run() -> None:
                 logger.debug("ignored non-QSO event %s (%s)", event.session_id, event.event_type)
                 return
             if is_below_kerchunk_threshold(
-                event, settings.kerchunk_threshold_seconds
+                event, settings.raw_event_kerchunk_threshold_seconds
             ):
                 duration_seconds = (event.stop_at - event.start_at).total_seconds()
                 logger.debug(
                     "ignored below-threshold raw event %s: %.3fs below %.3fs threshold",
                     event.session_id,
                     duration_seconds,
-                    settings.kerchunk_threshold_seconds,
+                    settings.raw_event_kerchunk_threshold_seconds,
                 )
                 return
             qso = make_qso(

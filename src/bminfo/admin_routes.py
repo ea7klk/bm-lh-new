@@ -62,7 +62,7 @@ def admin_maintenance(request: Request) -> JSONResponse:
     return JSONResponse(
         jsonable_encoder(
             web.get_store().maintenance_overview(
-                web.settings.kerchunk_threshold_seconds
+                web.settings.raw_event_kerchunk_threshold_seconds
             )
         )
     )
@@ -119,7 +119,7 @@ def admin_clear_irrelevant_raw_events(request: Request) -> Response:
     if not web._admin_allowed(request):
         return _authentication_required()
     result = web.get_store().clear_irrelevant_raw_events(
-        web.settings.kerchunk_threshold_seconds
+        web.settings.raw_event_kerchunk_threshold_seconds
     )
     if request.headers.get("accept", "").startswith("application/json"):
         return JSONResponse(jsonable_encoder(result))

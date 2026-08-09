@@ -1,0 +1,42 @@
+{% extends "dashboard/base.html" %}
+{% block title %}{{ labels.about.title|default:'About the project' }}{% endblock %}
+{% block content %}
+<section class="panel section">
+  <h2>{{ labels.about.title|default:'About the project' }}</h2>
+  <p>{{ labels.about.intro|default:'BrandMeister Lastheard provides live DMR activity and talkgroup statistics.' }}</p>
+
+  <p class="message">{{ labels.about.accountMigration|default:'Previous accounts were not migrated. Please create a new account.' }}</p>
+
+  <div class="cards">
+    <div class="panel stat">
+      <small>{{ labels.about.project|default:'Project' }}</small>
+      <strong><a href="https://github.com/ea7klk/bm-lh-new" target="_blank" rel="noopener noreferrer">{{ labels.about.repository|default:'Source code' }}</a></strong>
+    </div>
+    <div class="panel stat">
+      <small>{{ labels.about.author|default:'Author' }}</small>
+      <strong>{{ labels.about.authorName|default:'Volker Kerkhoff (EA7KLK)' }}</strong>
+    </div>
+    <div class="panel stat">
+      <small>{{ labels.about.copyright|default:'Copyright' }}</small>
+      <strong>{{ labels.about.copyrightText|default:'© 2026 Volker Kerkhoff' }}</strong>
+    </div>
+    <div class="panel stat">
+      <small>{{ labels.about.license|default:'License' }}</small>
+      <strong><a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a></strong>
+    </div>
+  </div>
+
+  <h3>{{ labels.about.repository|default:'Source code' }}</h3>
+  <p>{{ labels.about.repositoryText|default:'The project is developed as open source on GitHub.' }}</p>
+  <p><a class="button" href="https://github.com/ea7klk/bm-lh-new" target="_blank" rel="noopener noreferrer">{{ labels.about.githubLink|default:'Open the GitHub repository' }}</a></p>
+
+  <h3>{{ labels.about.license|default:'License' }}</h3>
+  <p>{{ labels.about.licenseText|default:'This project is licensed under Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International.' }}</p>
+  <p><a class="button secondary" href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">{{ labels.about.license|default:'License' }} · CC BY-NC-SA 4.0</a></p>
+
+  <h3>{{ labels.about.cookieTitle|default:'Cookies' }}</h3>
+  <p>{{ labels.about.cookieText|default:'Essential cookies support sessions and security. Optional analytics cookies are used only after consent.' }}</p>
+
+  <p><a class="button secondary" href="/">{{ labels.about.back|default:'Back to dashboard' }}</a></p>
+</section>
+{% endblock %}

@@ -6,6 +6,31 @@ responsive grouped-statistics interface modeled after
 
 ## Application structure
 
+The project now includes a Django 6.1 implementation in `django_app/`. It is the deployed web
+application in the Dockge Compose stack; the earlier FastAPI service remains in the repository as
+a migration-compatible runtime fallback while the cutover is completed:
+
+```text
+django_app/
+├── config/                 Django settings, ASGI/WSGI entry points, and URLs
+├── dashboard/models.py     PostgreSQL data model and custom callsign user
+├── dashboard/core_views.py dashboard filters, aggregation, and public APIs
+├── dashboard/auth_views.py registration, verification, reset, profile, and email changes
+├── dashboard/report_views.py authenticated reports and CSV/XLSX/PDF exports
+├── dashboard/live_consumers.py authenticated WebSocket live-QSO stream
+├── dashboard/admin_views.py maintenance, quality metrics, retention, and session actions
+├── dashboard/admin.py      Django admin for users, raw events, QSOs, and talkgroups
+└── dashboard/management/
+    └── commands/migrate_legacy.py  idempotent legacy database migration
+```
+
+The Dockge deployment routes `TRAEFIK_HOST` to the Django service. The old FastAPI web container
+is retained without a public Traefik route so it can be used during migration and rollback. The
+Django service uses a separate `django-postgres` database, owns a collector as a supervised
+background management command, and exposes the `/admin/` Django admin site. The original
+standalone `collector` service remains in both Compose files and continues writing to the legacy
+`postgres` database until the migration is complete.
+
 The web application is assembled in `src/bminfo/web.py`, but route groups and
 their responsibilities are split into focused modules:
 
@@ -53,9 +78,11 @@ duration_ms = round((Stop - Start) * 1000)
 ```
 
 Records with duration `< KERCHUNK_THRESHOLD_SECONDS` are excluded from `qsos`; the default is
-three seconds. A duration of exactly three seconds is kept. All decoded events, including
-filtered kerchunks, start events, and completed sessions without a displayable talkgroup, are
-retained in `raw_events` for auditing and reprocessing. The `qsos` table contains only completed
+three seconds. A duration of exactly three seconds is kept. `RAW_EVENT_KERCHUNK_THRESHOLD_SECONDS`
+is an independent threshold for retaining completed session-stop records in `raw_events`. Set it
+lower than the QSO threshold when short transmissions should remain available for later analysis.
+All decoded events retained by the collector, including filtered kerchunks and completed sessions
+without a displayable talkgroup, remain in `raw_events` for auditing and reprocessing. The `qsos` table contains only completed
 sessions with a destination ID and a non-empty destination name from either the event or synced
 talkgroup metadata; local talkgroup 9 is excluded.
 
@@ -63,11 +90,17 @@ The database upsert on `session_id` makes the collector safe against duplicate d
 duplicate events caused by reconnects or broad subscriptions. Local talkgroup 9 is excluded by
 default, matching the reference application.
 
-Talkgroup metadata is fetched automatically from BrandMeister `/v2/talkgroup` at collector
-startup and then every `TALKGROUPS_SYNC_HOURS` hours. Each record is stored with its display name,
-country code, full country name, and continent. Country classification follows the MCC and
-special-prefix rules in `talkgroups.py`, including global talkgroups beginning with 9 and the
-regional exceptions used by `talkgroupsService.js`.
+`qsos.raw_event_id` is retained only as a nullable historical identifier. In both the Django and
+legacy implementations it is no longer a foreign key or ORM relationship. Raw-event retention or
+cleanup therefore never blocks, cascades to, or deletes a QSO.
+
+Talkgroup metadata is fetched automatically from BrandMeister `/v2/talkgroup` by the background
+collector at 02:00 UTC each day. Existing rows are repaired on startup, and the same MCC and
+special-prefix rules as the legacy `talkgroups.py` are applied on every update, including global
+talkgroups beginning with 9 and the regional exceptions used by `talkgroupsService.js`. The
+canonical pinned entry `214001` is always stored as `Sala Andalucía`, Europe, Spain.
+
+All internal timestamps and calendar range calculations use UTC.
 
 ## Run locally
 
@@ -82,13 +115,69 @@ export POSTGRES_DB=bminfo POSTGRES_USER=bminfo POSTGRES_PASSWORD=bminfo
 bminfo-collector
 ```
 
-In a second terminal:
+In a second terminal, the legacy FastAPI fallback can still be run directly:
 
 ```bash
 uvicorn bminfo.web:app --reload
 ```
 
-Open <http://localhost:8000> for the dashboard. The API endpoints are:
+The Compose-based Django application is available at <http://localhost:8001> with the example
+environment. Its admin panel is at <http://localhost:8001/admin/>. The API endpoints are:
+
+To run the Django implementation locally, copy `.env.example` to `.env`, then start the dedicated
+database and service. The service also starts the collector background job when
+`DJANGO_COLLECTOR_ENABLED=true`:
+
+```bash
+docker compose up -d django-postgres django
+open http://localhost:8001/
+```
+
+The initial Django administrator reuses `SMTP_USERNAME` as the email, `DJANGO_ADMIN_CALLSIGN` as
+the callsign, and `ADMIN_PASSWORD` as the password.
+
+### Migrate the legacy database to Django
+
+Copy `.env.example` to `.env` and set both database configurations before migrating:
+
+- `LEGACY_POSTGRES_*` identifies the existing FastAPI/collector database.
+- `DJANGO_POSTGRES_*` identifies the new Django database.
+
+Start the Django database and apply its schema first:
+
+```bash
+docker compose up -d django-postgres
+docker compose run --rm django python manage.py migrate
+```
+
+Preview the migration without writing anything:
+
+```bash
+docker compose run --rm django python manage.py migrate_legacy --dry-run
+```
+
+Run the migration:
+
+```bash
+docker compose run --rm django python manage.py migrate_legacy
+```
+
+Raw events and QSOs are streamed from the old database and migrated in batches of 1,000 rows by
+default. To use a different batch size, set `DJANGO_MIGRATION_BATCH_SIZE` in `.env` or override it
+for one run:
+
+```bash
+docker compose run --rm django python manage.py migrate_legacy --batch-size 5000
+```
+
+The command prints elapsed time, source totals, and progress after each batch. Use `--dry-run` to
+review the source counts without writing to the Django database.
+
+The migration reads the old database through the `LEGACY_POSTGRES_*` variables supplied by
+Compose and writes to the Django database configured with `DJANGO_POSTGRES_*`. It migrates raw
+events, QSOs, talkgroups, users, service heartbeats, sessions, and email-token records. The
+operation is idempotent: stable hashes, IDs, and natural keys prevent duplicate records when it
+is run again. User sessions are migrated as records, but users should log in again after cutover.
 
 - `GET /api/stats/summary`
 - `GET /api/qsos?limit=100&offset=0`
@@ -98,9 +187,10 @@ Open <http://localhost:8000> for the dashboard. The API endpoints are:
 - `GET /public/continents`
 - `GET /public/countries?continent=Europe`
 - `GET /public/talkgroups?continent=Europe&country=ES`
-- `GET /user/live-qsos` and `WebSocket /user/live-qsos/ws` (registered users)
-- `GET /admin/postgres` (admin authentication required)
-- `POST /admin/postgres/analyze` (admin authentication required)
+- `GET /reports/` and `/reports/export.csv|xlsx|pdf` (registered users)
+- `GET /user/live-qsos/` and `WebSocket /ws/live-qsos/` (registered users)
+- `GET /admin/` (the standard Django model administration) and `/administration/`
+  (staff-only application maintenance and data-quality pages)
 - `GET /locales/{locale}` (`en`, `es`, `de`, or `fr`)
 - `GET /health`
 - `GET /status` (database, collector, table-row, and active-user status)
@@ -152,19 +242,28 @@ still use the public dashboard ranges through one week. Opening the main dashboa
 in refreshes the sliding session expiry and shows the signed-in user's callsign in the account
 navigation.
 
-The registered-user Live QSOs page keeps one authenticated websocket open. The collector publishes
-each qualifying QSO through PostgreSQL `LISTEN/NOTIFY`, and the page receives matching rows without
-polling or reloading when filters change. If the connection is interrupted, the page reconnects
+The registered-user Live QSOs page keeps one authenticated WebSocket open. The consumer streams
+new qualifying rows continuously from the Django database and applies callsign, geography, and
+talkgroup filters without reloading the page. If the connection is interrupted, the page reconnects
 automatically.
+
+The Django implementation now includes the legacy account and privacy behavior: email verification
+before first login, password reset links, double confirmation for email changes, callsign/email
+login, localized JSON-backed labels in English, Spanish, German, and French, optional Matomo only
+after cookie consent, and the about page. Registered users alone can search callsigns, use extended
+time ranges, open reports, and open Live QSOs. Staff users can access Django admin and the custom
+maintenance/data-quality page at `/administration/`. The standard Django model
+administration remains available at `/admin/`.
 
 ## Registered users and admin panel
 
-Users can register at <http://localhost:8000/user/register> and sign in at
-<http://localhost:8000/user/login>. A profile shows callsign-specific QSO count, total talk
+Users can register at <http://localhost:8001/register/> and sign in at
+<http://localhost:8001/login/>. A profile shows callsign-specific QSO count, total talk
 time, unique talkgroups, first/last heard timestamps, and the top talkgroups by activity.
 Passwords are stored as salted PBKDF2-SHA256 hashes; the application does not store plaintext
-passwords. Password hashes from the reference application are accepted as bcrypt during the
-migration and upgraded automatically after the user's first successful login.
+passwords. Legacy URL-safe PBKDF2-SHA256 hashes and raw bcrypt hashes are retained using
+compatibility hashers during migration, then automatically upgraded to Django's standard PBKDF2
+format after the user's first successful login.
 
 Set `ADMIN_PASSWORD` for the web service before opening <http://localhost:8000/admin>. The admin
 panel provides registered-user totals, 24-hour network totals, per-user QSO/talk-time metrics,
@@ -175,6 +274,8 @@ ADMIN_PASSWORD=replace-with-a-long-random-password
 COOKIE_SECURE=false
 # Completed QSOs shorter than this are excluded from qsos and live/report views.
 KERCHUNK_THRESHOLD_SECONDS=3
+# Completed session-stop raw events shorter than this are not retained.
+RAW_EVENT_KERCHUNK_THRESHOLD_SECONDS=3
 # How often the collector records its process heartbeat.
 COLLECTOR_HEARTBEAT_SECONDS=30
 # Maximum time to finish an in-flight event during graceful shutdown.
@@ -196,16 +297,23 @@ connection capacity for all web workers, collectors, and administrative connecti
 The reference workload produced approximately 435 MB in three days, including 380 MB of
 `raw_events`. If that rate remains stable, budget roughly 13 GB for three months or 26 GB for
 six months, then add headroom for indexes, WAL, and maintenance. The Compose files expose
-PostgreSQL memory, planner, WAL, and autovacuum settings through the `POSTGRES_*` variables in
+PostgreSQL memory, planner, WAL, connection, and autovacuum settings through the `POSTGRES_*` variables in
 `.env.example`. The suggested values assume an SSD-backed host with at least 4 GB available to
 PostgreSQL; reduce `POSTGRES_SHARED_BUFFERS` and `POSTGRES_EFFECTIVE_CACHE_SIZE` on smaller hosts.
+
+The legacy database defaults to 150 connections. The application pool limit is per process, so
+size `POSTGRES_POOL_MAX_SIZE` together with `WEB_WORKERS` rather than treating it as a global
+limit. The collector reuses its pool for heartbeat writes, avoiding an unnecessary second pool.
+The Django service defaults to `DJANGO_DB_CONN_MAX_AGE=0`; this releases connections after each
+request or background collector cycle and prevents idle worker threads from exhausting the
+separate Django PostgreSQL server. Set it higher only after measuring connection usage.
 
 These settings tune PostgreSQL for the retention period; they do not delete data automatically.
 Use the admin maintenance actions to remove old `raw_events` or `qsos` records after confirmation.
 
-After changing `KERCHUNK_THRESHOLD_SECONDS` in `.env`, recreate both the `web` and
-`collector` services so their process environments are refreshed:
-`docker-compose up -d --force-recreate web collector`.
+After changing either threshold in `.env`, recreate the affected services so their process
+environments are refreshed:
+`docker-compose up -d --force-recreate web collector django`.
 
 Set `COOKIE_SECURE=true` when the application is served over HTTPS. New registrations are active
 only after the user confirms the email address. Existing active accounts, including migrated
@@ -218,7 +326,7 @@ French. Configure the SMTP sender and public application URL in `.env`; the prop
 settings for `mail.conxtor.com` and `bm-lh@ea7klk.es` are already included in `.env.example`:
 
 ```dotenv
-APP_PUBLIC_URL=https://bm.ea7klk.es
+APP_PUBLIC_URL=https://bminfo.ea7klk.es
 SMTP_ENABLED=true
 SMTP_HOST=mail.conxtor.com
 SMTP_PORT=587
@@ -268,69 +376,6 @@ The dashboard, account pages, and admin panel support English, Spanish, German, 
 language selector stores the choice only in the browser’s `bm_lang` cookie for 15 days. The
 application does not read or write a user-language preference in PostgreSQL. If no cookie exists,
 the request’s `Accept-Language` header is used and English is the fallback.
-
-### Migrate users from the old bm-lh-nextgen app
-
-The migration copies only the old application's `users` table. It preserves callsigns, names,
-email addresses, account status, registration/login timestamps, and compatible password hashes.
-User sessions are not migrated, so every user must log in again after the migration.
-
-The export contains password hashes. Keep the generated file private and remove it after a
-successful import. The `migration-data/` directory is ignored by Git.
-
-#### Docker migration
-
-1. Start the new application's target PostgreSQL and web services:
-
-   ```bash
-   docker compose up -d postgres web
-   ```
-
-2. Set the old application's PostgreSQL DSN. When the old database is published on the host,
-   use `host.docker.internal` because the migration runs inside a temporary Docker container:
-
-   ```bash
-   export REFERENCE_DATABASE_URL='postgresql://olduser:oldpassword@host.docker.internal:15432/old_db'
-   ```
-
-   If both databases share a Docker network, use the old database service name instead. The
-   target DSN defaults to `postgresql://bminfo:bminfo@postgres:5432/bminfo`; pass
-   `--target-dsn` if the target database is elsewhere.
-
-3. Export the old users to a private file on the host:
-
-   ```bash
-   scripts/migrate_users_docker.sh export \
-     --output /migration/users-export.json
-   ```
-
-4. Perform a dry run before writing to the new database:
-
-   ```bash
-   scripts/migrate_users_docker.sh import \
-     --input /migration/users-export.json \
-     --dry-run
-   ```
-
-5. Import the users. The default `skip` policy leaves existing target users unchanged:
-
-   ```bash
-   scripts/migrate_users_docker.sh import \
-     --input /migration/users-export.json \
-     --on-conflict skip
-   ```
-
-   Use `--on-conflict update` to replace matching callsign/email records, or
-   `--on-conflict error` to abort on the first duplicate.
-
-6. Verify the accounts in the admin panel at <http://localhost:8000/admin>. Imported bcrypt
-   hashes are accepted and upgraded to the new password-hash format after each user's first
-   successful login. Existing inactive accounts remain inactive and can be activated from the
-   admin panel.
-
-For a non-Docker migration, run `python scripts/migrate_users.py export` with
-`--source-dsn`, then run `python scripts/migrate_users.py import` with `--target-dsn` and the
-export file path.
 
 The admin page also includes a read-only PostgreSQL overview with database size, connections,
 server/version information, table size estimates, and connection states. The “Refresh planner
