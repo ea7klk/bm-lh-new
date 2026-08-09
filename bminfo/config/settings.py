@@ -62,10 +62,10 @@ DATABASES = {
         "PASSWORD": os.getenv("DJANGO_POSTGRES_PASSWORD", "bminfo_django"),
         "HOST": os.getenv("DJANGO_POSTGRES_HOST", "postgres"),
         "PORT": os.getenv("DJANGO_POSTGRES_PORT", "5432"),
-        # Background collector threads do not pass through Django request
-        # cleanup. Keep connections short-lived by default; deployments that
-        # benefit from reuse can opt into a longer lifetime explicitly.
-        "CONN_MAX_AGE": int(os.getenv("DJANGO_DB_CONN_MAX_AGE", "0")),
+        # Keep connections reusable for a bounded period. Django closes stale
+        # connections at request boundaries, while the finite lifetime avoids
+        # accumulating idle connections across worker and collector threads.
+        "CONN_MAX_AGE": int(os.getenv("DJANGO_DB_CONN_MAX_AGE", "60")),
         "CONN_HEALTH_CHECKS": True,
     }
 }

@@ -38,6 +38,9 @@ Read `README.md` before making substantial changes.
   tokens.
 - Maintain compatibility for documented URLs and response shapes unless a
   breaking change is explicitly requested.
+- For concurrency changes, keep the worker budget and PostgreSQL connection
+  budget aligned. The default target is three async workers and 120 database
+  connections for roughly 25 concurrent users.
 
 ## Data invariants
 
@@ -74,6 +77,8 @@ required PostgreSQL test database. Do not weaken tests to make changes pass.
   contracts change.
 - Update `README.md` for endpoint, setup, deployment, configuration, database,
   or operator-workflow changes.
+- When changing retention or concurrency defaults, include the sizing basis and
+  the assumptions used for capacity planning.
 - Do not perform destructive database, Git, or deployment actions unless the
   user explicitly requests them and the exact target is verified.
 - Summarize changed files and verification results when handing work back.

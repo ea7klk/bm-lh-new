@@ -21,7 +21,7 @@ bminfo/
 
 The container entrypoint applies migrations, collects static files, creates or
 updates the configured administrator, starts the BrandMeister collector when
-enabled, and serves the ASGI application with Daphne.
+enabled, and serves the ASGI application with Gunicorn/Uvicorn workers.
 
 ## Run with Docker Compose
 
@@ -93,6 +93,39 @@ to the threshold are retained. Local talkgroup 9 is excluded by default.
 Decoded events are retained for auditing according to
 `RAW_EVENT_KERCHUNK_THRESHOLD_SECONDS`. QSO writes remain idempotent by session
 ID so reconnects and duplicate deliveries do not duplicate transmissions.
+
+## Concurrency and six-month sizing
+
+The default Compose profile is sized for approximately 25 concurrent dashboard
+users: three async Gunicorn/Uvicorn workers, a 60-second bounded Django database
+connection lifetime, and PostgreSQL with 120 maximum connections. The remaining
+connection budget covers the embedded collector, migrations, pgAdmin, and
+maintenance tasks. Increase `DJANGO_WORKERS` only after checking CPU and
+PostgreSQL connection usage.
+
+As a live baseline on 2026-08-09, the public dashboard reported 238,542 QSOs in
+the previous seven days, 10,132 unique callsigns, and 1,061 talkgroups. That is
+about 34,077 QSOs per day, or approximately 6.22 million QSOs over 182.5 days
+if activity remains stable. The dashboard does not expose raw-event row sizes,
+so storage is an estimate: budget 40–60 GB for PostgreSQL data and indexes for
+six months, then provision at least 80 GB of usable disk (120 GB is a safer
+operational target for WAL, vacuum headroom, and growth). `raw_events` contains
+JSON payloads for auditing and is expected to be the dominant table.
+
+Re-estimate after the first week of production with PostgreSQL's relation-size
+queries, and keep free disk above 25%:
+
+```sql
+SELECT relname,
+       pg_size_pretty(pg_total_relation_size(oid)) AS total_size
+FROM pg_class
+WHERE relname IN ('raw_events', 'qsos')
+ORDER BY pg_total_relation_size(oid) DESC;
+```
+
+The six-month estimate assumes the current seven-day activity rate and the
+current raw-event retention policy; sustained traffic growth or a higher raw
+payload volume requires proportional headroom.
 
 ## Main endpoints
 
