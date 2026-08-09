@@ -7,7 +7,7 @@ python manage.py bootstrap_admin
 
 collector_pid=""
 web_pid=""
-if [ "${DJANGO_COLLECTOR_ENABLED:-true}" = "true" ]; then
+if [ "${APP_COLLECTOR_ENABLED:-true}" = "true" ]; then
   python manage.py collect_brandmeister &
   collector_pid=$!
 fi
@@ -26,11 +26,11 @@ trap cleanup TERM INT EXIT
 
 gunicorn \
   --bind 0.0.0.0:8000 \
-  --workers "${DJANGO_WORKERS:-3}" \
+  --workers "${APP_WORKERS:-3}" \
   --worker-class uvicorn.workers.UvicornWorker \
-  --timeout "${DJANGO_TIMEOUT_SECONDS:-120}" \
-  --graceful-timeout "${DJANGO_GRACEFUL_TIMEOUT_SECONDS:-30}" \
-  --keep-alive "${DJANGO_KEEPALIVE_SECONDS:-5}" \
+  --timeout "${APP_TIMEOUT_SECONDS:-120}" \
+  --graceful-timeout "${APP_GRACEFUL_TIMEOUT_SECONDS:-30}" \
+  --keep-alive "${APP_KEEPALIVE_SECONDS:-5}" \
   config.asgi:application &
 web_pid=$!
 wait "$web_pid"

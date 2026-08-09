@@ -9,9 +9,9 @@ def env_bool(name: str, default: bool = False) -> bool:
     return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY") or os.getenv("ADMIN_PASSWORD", "unsafe-development-key")
-DEBUG = env_bool("DJANGO_DEBUG", False)
-ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",") if host.strip()]
+SECRET_KEY = os.getenv("APP_SECRET_KEY") or os.getenv("ADMIN_PASSWORD", "unsafe-development-key")
+DEBUG = env_bool("APP_DEBUG", False)
+ALLOWED_HOSTS = [host.strip() for host in os.getenv("APP_ALLOWED_HOSTS", "*").split(",") if host.strip()]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -57,15 +57,15 @@ TEMPLATES = [
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("DJANGO_POSTGRES_DB", "bminfo_django"),
-        "USER": os.getenv("DJANGO_POSTGRES_USER", "bminfo_django"),
-        "PASSWORD": os.getenv("DJANGO_POSTGRES_PASSWORD", "bminfo_django"),
-        "HOST": os.getenv("DJANGO_POSTGRES_HOST", "postgres"),
-        "PORT": os.getenv("DJANGO_POSTGRES_PORT", "5432"),
+        "NAME": os.getenv("DB_NAME", "bminfo"),
+        "USER": os.getenv("DB_USER", "bminfo"),
+        "PASSWORD": os.getenv("DB_PASSWORD", "bminfo"),
+        "HOST": os.getenv("DB_HOST", "postgres"),
+        "PORT": os.getenv("DB_PORT", "5432"),
         # Keep connections reusable for a bounded period. Django closes stale
         # connections at request boundaries, while the finite lifetime avoids
         # accumulating idle connections across worker and collector threads.
-        "CONN_MAX_AGE": int(os.getenv("DJANGO_DB_CONN_MAX_AGE", "60")),
+        "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "60")),
         "CONN_HEALTH_CHECKS": True,
     }
 }
@@ -80,7 +80,7 @@ PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.ScryptPasswordHasher",
 ]
 
-LANGUAGE_CODE = os.getenv("DJANGO_LANGUAGE_CODE", "en-us")
+LANGUAGE_CODE = os.getenv("APP_LANGUAGE_CODE", "en-us")
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
@@ -96,7 +96,7 @@ CSRF_COOKIE_SECURE = SESSION_COOKIE_SECURE
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 CSRF_TRUSTED_ORIGINS = [
     value.strip()
-    for value in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+    for value in os.getenv("APP_CSRF_TRUSTED_ORIGINS", "").split(",")
     if value.strip()
 ]
 

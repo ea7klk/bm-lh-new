@@ -36,7 +36,7 @@ The dashboard is available at <http://localhost:8000>. PostgreSQL and pgAdmin
 are included in the stack; PostgreSQL is exposed on port 5432 by default.
 
 The production-oriented `compose-dockge.yaml` uses the published
-`ghcr.io/ea7klk/bm-lh-new` image and Traefik labels:
+`ghcr.io/ea7klk/bminfo-new` image and Traefik labels:
 
 ```bash
 docker compose -f compose-dockge.yaml up -d
@@ -51,11 +51,11 @@ dependencies and set the database variables used in `config/settings.py`:
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -r bminfo/requirements.txt
-export DJANGO_SECRET_KEY=development-only
-export DJANGO_POSTGRES_HOST=localhost
-export DJANGO_POSTGRES_DB=bminfo
-export DJANGO_POSTGRES_USER=bminfo
-export DJANGO_POSTGRES_PASSWORD=bminfo
+export APP_SECRET_KEY=development-only
+export DB_HOST=localhost
+export DB_NAME=bminfo
+export DB_USER=bminfo
+export DB_PASSWORD=bminfo
 python bminfo/manage.py migrate
 python bminfo/manage.py bootstrap_admin
 python bminfo/manage.py runserver
@@ -73,14 +73,15 @@ python bminfo/manage.py collect_brandmeister
 are:
 
 - `POSTGRES_*` for the application database.
-- `DJANGO_*` for secrets, hosts, workers, administrator bootstrap, and the
-  embedded collector.
+- `APP_*` for secrets, hosts, workers, and embedded collector settings.
+- `DB_*` for the application database connection and `ADMIN_*` for bootstrap
+  administrator settings.
 - `BM_*`, `TALKGROUPS_*`, and QSO thresholds for BrandMeister ingestion.
 - `SMTP_*` for registration, verification, and password-reset email.
 - `MATOMO_*` for optional consent-gated analytics.
 - `TRAEFIK_*` for the Dockge deployment.
 
-Use `COOKIE_SECURE=true` and configure `DJANGO_CSRF_TRUSTED_ORIGINS` when the
+Use `COOKIE_SECURE=true` and configure `APP_CSRF_TRUSTED_ORIGINS` when the
 application is served over HTTPS. Keep `.env` out of version control.
 
 ## Data behavior
@@ -100,7 +101,7 @@ The default Compose profile is sized for approximately 25 concurrent dashboard
 users: three async Gunicorn/Uvicorn workers, a 60-second bounded Django database
 connection lifetime, and PostgreSQL with 120 maximum connections. The remaining
 connection budget covers the embedded collector, migrations, pgAdmin, and
-maintenance tasks. Increase `DJANGO_WORKERS` only after checking CPU and
+maintenance tasks. Increase `APP_WORKERS` only after checking CPU and
 PostgreSQL connection usage.
 
 As a live baseline on 2026-08-09, the public dashboard reported 238,542 QSOs in

@@ -45,22 +45,22 @@ jobs:
 
       - name: Check Django application
         env:
-          DJANGO_SECRET_KEY: ci-only-secret
-          DJANGO_POSTGRES_DB: ci
-          DJANGO_POSTGRES_USER: ci
-          DJANGO_POSTGRES_PASSWORD: ci
-          DJANGO_POSTGRES_HOST: localhost
+          APP_SECRET_KEY: ci-only-secret
+          DB_NAME: ci
+          DB_USER: ci
+          DB_PASSWORD: ci
+          DB_HOST: localhost
         run: |
           python bminfo/manage.py check
           python bminfo/manage.py makemigrations --check --dry-run
 
       - name: Run Django unit tests
         env:
-          DJANGO_SECRET_KEY: ci-only-secret
-          DJANGO_POSTGRES_DB: ci
-          DJANGO_POSTGRES_USER: ci
-          DJANGO_POSTGRES_PASSWORD: ci
-          DJANGO_POSTGRES_HOST: localhost
+          APP_SECRET_KEY: ci-only-secret
+          DB_NAME: ci
+          DB_USER: ci
+          DB_PASSWORD: ci
+          DB_HOST: localhost
         run: python bminfo/manage.py test dashboard.tests --verbosity 2
 
   publish-image:
@@ -87,7 +87,7 @@ jobs:
         id: metadata
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/${{ github.repository_owner }}/bminfo-new
           tags: |
             type=raw,value=${{ github.event.release.tag_name }}
             type=semver,pattern={{version}},value=${{ github.event.release.tag_name }}

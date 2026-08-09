@@ -10,7 +10,7 @@ from dashboard.models import User
 class BootstrapAdminCommandTests(TestCase):
     def test_bootstrap_admin_creates_configured_superuser(self):
         output = StringIO()
-        with mock.patch.dict("os.environ", {"DJANGO_ADMIN_CALLSIGN": "ea7klk", "DJANGO_ADMIN_EMAIL": "admin@example.com", "ADMIN_PASSWORD": "strong-password"}, clear=False):
+        with mock.patch.dict("os.environ", {"ADMIN_CALLSIGN": "ea7klk", "ADMIN_EMAIL": "admin@example.com", "ADMIN_PASSWORD": "strong-password"}, clear=False):
             call_command("bootstrap_admin", stdout=output)
         admin = User.objects.get(callsign="EA7KLK")
         self.assertTrue(admin.is_superuser)
@@ -19,6 +19,6 @@ class BootstrapAdminCommandTests(TestCase):
         self.assertIn("Django administrator ready: EA7KLK", output.getvalue())
 
     def test_bootstrap_admin_requires_email_and_password(self):
-        with mock.patch.dict("os.environ", {"DJANGO_ADMIN_EMAIL": "", "SMTP_USERNAME": "", "ADMIN_PASSWORD": ""}, clear=False):
+        with mock.patch.dict("os.environ", {"ADMIN_EMAIL": "", "SMTP_USERNAME": "", "ADMIN_PASSWORD": ""}, clear=False):
             with self.assertRaises(CommandError):
                 call_command("bootstrap_admin")
