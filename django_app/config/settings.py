@@ -60,7 +60,7 @@ DATABASES = {
         "NAME": os.getenv("DJANGO_POSTGRES_DB", "bminfo_django"),
         "USER": os.getenv("DJANGO_POSTGRES_USER", "bminfo_django"),
         "PASSWORD": os.getenv("DJANGO_POSTGRES_PASSWORD", "bminfo_django"),
-        "HOST": os.getenv("DJANGO_POSTGRES_HOST", "django-postgres"),
+        "HOST": os.getenv("DJANGO_POSTGRES_HOST", "postgres"),
         "PORT": os.getenv("DJANGO_POSTGRES_PORT", "5432"),
         # Background collector threads do not pass through Django request
         # cleanup. Keep connections short-lived by default; deployments that
@@ -76,8 +76,6 @@ LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
 PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.PBKDF2PasswordHasher",
-    "dashboard.password_hashers.LegacyPbkdf2Sha256PasswordHasher",
-    "dashboard.password_hashers.LegacyBcryptPasswordHasher",
     "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
     "django.contrib.auth.hashers.ScryptPasswordHasher",
 ]

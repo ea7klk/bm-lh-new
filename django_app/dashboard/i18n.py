@@ -11,15 +11,7 @@ SUPPORTED_LOCALES = ("en", "es", "de", "fr")
 
 
 def _translation_path() -> Path:
-    candidates = (
-        Path(__file__).with_name("translations.json"),
-        Path(__file__).resolve().parents[2] / "src" / "bminfo" / "translations.json",
-        Path("/app/dashboard/translations.json"),
-    )
-    for path in candidates:
-        if path.exists():
-            return path
-    raise FileNotFoundError("translations.json is not available")
+    return Path(__file__).with_name("translations.json")
 
 
 @lru_cache(maxsize=1)

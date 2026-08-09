@@ -1,429 +1,118 @@
 # BrandMeister statistics
 
-This is a collector and dashboard for the BrandMeister LastHeard Socket.IO stream, with a
-responsive grouped-statistics interface modeled after
-[bm-lh-nextgen](https://github.com/ea7klk/bm-lh-nextgen).
+A Django and Channels application that collects the BrandMeister LastHeard
+Socket.IO stream and presents live QSOs, grouped statistics, reports, account
+management, and administrative maintenance tools.
 
-## Application structure
-
-The project now includes a Django 6.1 implementation in `django_app/`. It is the deployed web
-application in the Dockge Compose stack; the earlier FastAPI service remains in the repository as
-a migration-compatible runtime fallback while the cutover is completed:
+## Structure
 
 ```text
 django_app/
-├── config/                 Django settings, ASGI/WSGI entry points, and URLs
-├── dashboard/models.py     PostgreSQL data model and custom callsign user
-├── dashboard/core_views.py dashboard filters, aggregation, and public APIs
-├── dashboard/auth_views.py registration, verification, reset, profile, and email changes
-├── dashboard/report_views.py authenticated reports and CSV/XLSX/PDF exports
-├── dashboard/live_consumers.py authenticated WebSocket live-QSO stream
-├── dashboard/admin_views.py maintenance, quality metrics, retention, and session actions
-├── dashboard/admin.py      Django admin for users, raw events, QSOs, and talkgroups
-└── dashboard/management/
-    └── commands/migrate_legacy.py  idempotent legacy database migration
+├── config/                 Django settings, URLs, and ASGI/WSGI entry points
+├── dashboard/              Models, views, collector, reports, and admin tools
+│   ├── management/commands Django management commands
+│   └── migrations/         Database schema migrations
+├── templates/              Dashboard, account, report, and admin templates
+├── Dockerfile
+├── entrypoint.sh
+├── manage.py
+└── requirements.txt
 ```
 
-The Dockge deployment routes `TRAEFIK_HOST` to the Django service. The old FastAPI web container
-is retained without a public Traefik route so it can be used during migration and rollback. The
-Django service uses a separate `django-postgres` database, owns a collector as a supervised
-background management command, and exposes the `/admin/` Django admin site. The original
-standalone `collector` service remains in both Compose files and continues writing to the legacy
-`postgres` database until the migration is complete.
-
-The web application is assembled in `src/bminfo/web.py`, but route groups and
-their responsibilities are split into focused modules:
-
-```text
-src/bminfo/
-├── web.py             application lifecycle, middleware, dashboard, account,
-│                      authentication, and shared page-layout coordination
-├── auth_routes.py     registration, login, sessions, profile, and email flows
-├── dashboard_routes.py public dashboard and project-information pages
-├── live_routes.py     authenticated live-QSO page and websocket stream
-├── report_routes.py   authenticated reports, charts, and CSV/XLSX/PDF exports
-├── admin_page.py      authenticated admin HTML shell and maintenance presentation
-├── public_routes.py   health, status, public statistics, filters, and QSO APIs
-├── admin_routes.py    admin APIs, QSO rebuild, retention cleanup, and user actions
-├── storage.py         PostgreSQL queries, transactions, and data maintenance
-├── collector.py       LastHeard ingestion and raw-event/QSO processing
-├── auth.py            password hashing, sessions, and security tokens
-├── i18n.py            translation catalog and locale handling
-└── config.py          environment-backed application settings
-```
-
-`web.py` includes the public, admin API, account, dashboard, live-QSO, report,
-and admin-page routers and re-exports their legacy handler names for compatibility with existing
-integrations and tests. The feature routers resolve shared storage, settings,
-authentication, and page-layout helpers when a request is handled, so runtime
-configuration and test overrides continue to work without duplicating
-application state. New route groups should follow the same pattern: keep HTTP
-concerns in a router module, put database behavior in `storage.py`, and keep
-presentation helpers separate from query logic.
-
-Run the full test suite after changing a route or storage query:
-
-```bash
-pytest -q
-```
-
-## Data model
-
-BrandMeister's completed LastHeard records contain an `Event` of `Session-Stop`, a stable
-`SessionID`, and Unix timestamps named `Start` and `Stop`. The collector treats one completed
-`SessionID` as one transmission/QSO and calculates:
-
-```text
-duration_ms = round((Stop - Start) * 1000)
-```
-
-Records with duration `< KERCHUNK_THRESHOLD_SECONDS` are excluded from `qsos`; the default is
-three seconds. A duration of exactly three seconds is kept. `RAW_EVENT_KERCHUNK_THRESHOLD_SECONDS`
-is an independent threshold for retaining completed session-stop records in `raw_events`. Set it
-lower than the QSO threshold when short transmissions should remain available for later analysis.
-All decoded events retained by the collector, including filtered kerchunks and completed sessions
-without a displayable talkgroup, remain in `raw_events` for auditing and reprocessing. The `qsos` table contains only completed
-sessions with a destination ID and a non-empty destination name from either the event or synced
-talkgroup metadata; local talkgroup 9 is excluded.
-
-The database upsert on `session_id` makes the collector safe against duplicate delivery and
-duplicate events caused by reconnects or broad subscriptions. Local talkgroup 9 is excluded by
-default, matching the reference application.
-
-`qsos.raw_event_id` is retained only as a nullable historical identifier. In both the Django and
-legacy implementations it is no longer a foreign key or ORM relationship. Raw-event retention or
-cleanup therefore never blocks, cascades to, or deletes a QSO.
-
-Talkgroup metadata is fetched automatically from BrandMeister `/v2/talkgroup` by the background
-collector at 02:00 UTC each day. Existing rows are repaired on startup, and the same MCC and
-special-prefix rules as the legacy `talkgroups.py` are applied on every update, including global
-talkgroups beginning with 9 and the regional exceptions used by `talkgroupsService.js`. The
-canonical pinned entry `214001` is always stored as `Sala Andalucía`, Europe, Spain.
-
-All internal timestamps and calendar range calculations use UTC.
-
-## Run locally
-
-Create a PostgreSQL database, then run:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
-export POSTGRES_HOST=localhost POSTGRES_PORT=5432
-export POSTGRES_DB=bminfo POSTGRES_USER=bminfo POSTGRES_PASSWORD=bminfo
-bminfo-collector
-```
-
-In a second terminal, the legacy FastAPI fallback can still be run directly:
-
-```bash
-uvicorn bminfo.web:app --reload
-```
-
-The Compose-based Django application is available at <http://localhost:8001> with the example
-environment. Its admin panel is at <http://localhost:8001/admin/>. The API endpoints are:
-
-To run the Django implementation locally, copy `.env.example` to `.env`, then start the dedicated
-database and service. The service also starts the collector background job when
-`DJANGO_COLLECTOR_ENABLED=true`:
-
-```bash
-docker compose up -d django-postgres django
-open http://localhost:8001/
-```
-
-The initial Django administrator reuses `SMTP_USERNAME` as the email, `DJANGO_ADMIN_CALLSIGN` as
-the callsign, and `ADMIN_PASSWORD` as the password.
-
-### Migrate the legacy database to Django
-
-Copy `.env.example` to `.env` and set both database configurations before migrating:
-
-- `LEGACY_POSTGRES_*` identifies the existing FastAPI/collector database.
-- `DJANGO_POSTGRES_*` identifies the new Django database.
-
-Start the Django database and apply its schema first:
-
-```bash
-docker compose up -d django-postgres
-docker compose run --rm django python manage.py migrate
-```
-
-Preview the migration without writing anything:
-
-```bash
-docker compose run --rm django python manage.py migrate_legacy --dry-run
-```
-
-Run the migration:
-
-```bash
-docker compose run --rm django python manage.py migrate_legacy
-```
-
-Raw events and QSOs are streamed from the old database and migrated in batches of 1,000 rows by
-default. To use a different batch size, set `DJANGO_MIGRATION_BATCH_SIZE` in `.env` or override it
-for one run:
-
-```bash
-docker compose run --rm django python manage.py migrate_legacy --batch-size 5000
-```
-
-The command prints elapsed time, source totals, and progress after each batch. Use `--dry-run` to
-review the source counts without writing to the Django database.
-
-The migration reads the old database through the `LEGACY_POSTGRES_*` variables supplied by
-Compose and writes to the Django database configured with `DJANGO_POSTGRES_*`. It migrates raw
-events, QSOs, talkgroups, users, service heartbeats, sessions, and email-token records. The
-operation is idempotent: stable hashes, IDs, and natural keys prevent duplicate records when it
-is run again. User sessions are migrated as records, but users should log in again after cutover.
-
-- `GET /api/stats/summary`
-- `GET /api/qsos?limit=100&offset=0`
-- `GET /public/lastheard/grouped?timeRange=30m&limit=25`
-- `GET /public/lastheard/callsigns?timeRange=30m&limit=25`
-- `GET /public/stats`
-- `GET /public/continents`
-- `GET /public/countries?continent=Europe`
-- `GET /public/talkgroups?continent=Europe&country=ES`
-- `GET /reports/` and `/reports/export.csv|xlsx|pdf` (registered users)
-- `GET /user/live-qsos/` and `WebSocket /ws/live-qsos/` (registered users)
-- `GET /admin/` (the standard Django model administration) and `/administration/`
-  (staff-only application maintenance and data-quality pages)
-- `GET /locales/{locale}` (`en`, `es`, `de`, or `fr`)
-- `GET /health`
-- `GET /status` (database, collector, table-row, and active-user status)
-
-## Repeatable load test
-
-`scripts/load_test.py` exercises the main dashboard, public statistics, recent QSOs, profile
-statistics, live QSOs, HTML reports, and PDF exports with 25 concurrent clients by default. It
-uses only Python's standard library and never stores or prints the supplied password.
-
-```bash
-LOAD_TEST_LOGIN=EA7KLK \
-LOAD_TEST_PASSWORD='replace-with-test-password' \
-python scripts/load_test.py \
-  --base-url https://bminfo.ea7klk.es \
-  --requests 250 \
-  --concurrency 25
-```
-
-Set `LOAD_TEST_CONCURRENCY` to change the default concurrency for repeated runs, or keep using
-the `--concurrency` option to override it per invocation.
-
-For a public-only run, omit `LOAD_TEST_LOGIN` and `LOAD_TEST_PASSWORD`. Use a disposable test
-account for live deployments and keep the request count/concurrency bounded.
-
-## Pull request merge protection
-
-The `Tests` job runs for every push and pull request, and also for merge-queue groups. To prevent
-failed pull requests from being merged, configure the repository's default branch protection
-rules or ruleset with `Tests` as a required status check. Enable the option requiring branches to
-be up to date before merging if you want the check to run against the latest target branch.
-
-The check name is intentionally stable: `Tests`.
-
-`/health` is a simple liveness check. `/status` performs a database connectivity check and
-returns the current `raw_events` and `qsos` row counts, the number of active authenticated users,
-and collector heartbeat freshness. It returns HTTP `200` when all services are healthy and
-HTTP `503` when the database is unavailable or the collector heartbeat is stale. The collector
-heartbeat interval is configurable with `COLLECTOR_HEARTBEAT_SECONDS` (default `30`); the status
-endpoint considers the collector stale after three intervals, with a minimum grace period of
-90 seconds. During container shutdown it disconnects from the LastHeard stream, finishes any
-in-flight database write, and closes its pooled connections. `COLLECTOR_SHUTDOWN_TIMEOUT_SECONDS`
-(default `15`) controls the maximum drain period. This minimizes shutdown loss; a deployment gap
-can still miss events unless two collectors overlap or the upstream service provides replay.
-
-Callsign searches and the extended dashboard ranges (`2w` / last 14 days, `1M` / last month,
-`2M` / last 2 months, and `3M` / last 3 months; month ranges use 30-day increments) require an active user session. Anonymous visitors can
-still use the public dashboard ranges through one week. Opening the main dashboard while signed
-in refreshes the sliding session expiry and shows the signed-in user's callsign in the account
-navigation.
-
-The registered-user Live QSOs page keeps one authenticated WebSocket open. The consumer streams
-new qualifying rows continuously from the Django database and applies callsign, geography, and
-talkgroup filters without reloading the page. If the connection is interrupted, the page reconnects
-automatically.
-
-The Django implementation now includes the legacy account and privacy behavior: email verification
-before first login, password reset links, double confirmation for email changes, callsign/email
-login, localized JSON-backed labels in English, Spanish, German, and French, optional Matomo only
-after cookie consent, and the about page. Registered users alone can search callsigns, use extended
-time ranges, open reports, and open Live QSOs. Staff users can access Django admin and the custom
-maintenance/data-quality page at `/administration/`. The standard Django model
-administration remains available at `/admin/`.
-
-## Registered users and admin panel
-
-Users can register at <http://localhost:8001/register/> and sign in at
-<http://localhost:8001/login/>. A profile shows callsign-specific QSO count, total talk
-time, unique talkgroups, first/last heard timestamps, and the top talkgroups by activity.
-Passwords are stored as salted PBKDF2-SHA256 hashes; the application does not store plaintext
-passwords. Legacy URL-safe PBKDF2-SHA256 hashes and raw bcrypt hashes are retained using
-compatibility hashers during migration, then automatically upgraded to Django's standard PBKDF2
-format after the user's first successful login.
-
-Set `ADMIN_PASSWORD` for the web service before opening <http://localhost:8000/admin>. The admin
-panel provides registered-user totals, 24-hour network totals, per-user QSO/talk-time metrics,
-account activation/deactivation, and deletion. With Docker Compose, put this in `.env`:
-
-```dotenv
-ADMIN_PASSWORD=replace-with-a-long-random-password
-COOKIE_SECURE=false
-# Completed QSOs shorter than this are excluded from qsos and live/report views.
-KERCHUNK_THRESHOLD_SECONDS=3
-# Completed session-stop raw events shorter than this are not retained.
-RAW_EVENT_KERCHUNK_THRESHOLD_SECONDS=3
-# How often the collector records its process heartbeat.
-COLLECTOR_HEARTBEAT_SECONDS=30
-# Maximum time to finish an in-flight event during graceful shutdown.
-COLLECTOR_SHUTDOWN_TIMEOUT_SECONDS=15
-# Seven days since the user's last authenticated request.
-SESSION_HOURS=168
-# Keep report generation from blocking other requests under concurrent use.
-WEB_WORKERS=2
-POSTGRES_POOL_MIN_SIZE=2
-POSTGRES_POOL_MAX_SIZE=20
-```
-
-The web process uses a bounded PostgreSQL pool per worker. Increase `WEB_WORKERS` for additional
-CPU capacity and adjust `POSTGRES_POOL_MAX_SIZE` only if the PostgreSQL server has enough
-connection capacity for all web workers, collectors, and administrative connections.
-
-### PostgreSQL sizing for retained data
-
-The reference workload produced approximately 435 MB in three days, including 380 MB of
-`raw_events`. If that rate remains stable, budget roughly 13 GB for three months or 26 GB for
-six months, then add headroom for indexes, WAL, and maintenance. The Compose files expose
-PostgreSQL memory, planner, WAL, connection, and autovacuum settings through the `POSTGRES_*` variables in
-`.env.example`. The suggested values assume an SSD-backed host with at least 4 GB available to
-PostgreSQL; reduce `POSTGRES_SHARED_BUFFERS` and `POSTGRES_EFFECTIVE_CACHE_SIZE` on smaller hosts.
-
-The legacy database defaults to 150 connections. The application pool limit is per process, so
-size `POSTGRES_POOL_MAX_SIZE` together with `WEB_WORKERS` rather than treating it as a global
-limit. The collector reuses its pool for heartbeat writes, avoiding an unnecessary second pool.
-The Django service defaults to `DJANGO_DB_CONN_MAX_AGE=0`; this releases connections after each
-request or background collector cycle and prevents idle worker threads from exhausting the
-separate Django PostgreSQL server. Set it higher only after measuring connection usage.
-
-These settings tune PostgreSQL for the retention period; they do not delete data automatically.
-Use the admin maintenance actions to remove old `raw_events` or `qsos` records after confirmation.
-
-After changing either threshold in `.env`, recreate the affected services so their process
-environments are refreshed:
-`docker-compose up -d --force-recreate web collector django`.
-
-Set `COOKIE_SECURE=true` when the application is served over HTTPS. New registrations are active
-only after the user confirms the email address. Existing active accounts, including migrated
-accounts, remain usable without a new confirmation step.
-
-### Email verification
-
-New registrations receive a localized HTML confirmation message in English, Spanish, German, or
-French. Configure the SMTP sender and public application URL in `.env`; the proposed Mailcow
-settings for `mail.conxtor.com` and `bm-lh@ea7klk.es` are already included in `.env.example`:
-
-```dotenv
-APP_PUBLIC_URL=https://bminfo.ea7klk.es
-SMTP_ENABLED=true
-SMTP_HOST=mail.conxtor.com
-SMTP_PORT=587
-SMTP_USERNAME=bm-lh@ea7klk.es
-SMTP_PASSWORD=replace-with-the-mailbox-password
-SMTP_USE_TLS=true
-SMTP_USE_SSL=false
-SMTP_FROM_EMAIL=bm-lh@ea7klk.es
-SMTP_FROM_NAME=BrandMeister Lastheard
-SMTP_REPLY_TO=bm-lh@ea7klk.es
-EMAIL_VERIFICATION_HOURS=48
-PASSWORD_RESET_HOURS=1
-```
-
-Port `587` uses STARTTLS. Use port `465` with `SMTP_USE_SSL=true` and
-`SMTP_USE_TLS=false` if that is how the mail server is configured. Recreate the web service after
-changing these values. The login page includes a forgotten-password form; reset links are
-single-use and expire after `PASSWORD_RESET_HOURS`.
-
-User sessions use a sliding inactivity timeout. `SESSION_HOURS=168` expires a session after one
-week without an authenticated request; authenticated activity refreshes both the database expiry
-and the browser cookie.
-
-### Matomo analytics
-
-Matomo tracking is optional and follows the configuration used by the
-[reference project](https://github.com/ea7klk/bm-lh-nextgen). Set these variables for the web
-service to enable page-view and link tracking on the dashboard, account pages, and admin panel:
-
-```dotenv
-MATOMO_ENABLED=true
-MATOMO_URL=https://analytics.example.com
-MATOMO_SITE_ID=1
-```
-
-The script is omitted when tracking is disabled or any value is missing or invalid. `MATOMO_URL`
-must be an HTTP(S) Matomo installation URL without query parameters, and `MATOMO_SITE_ID` must be
-numeric. When Matomo is enabled, the tracker and its analytics cookies are withheld until the user
-explicitly accepts analytics cookies. The banner offers equally prominent accept and reject choices,
-and the `Cookie settings` link in the footer allows the choice to be changed or withdrawn. The
-consent preference is stored in the `bm_cookie_consent` cookie for 180 days. Login, administration,
-language and security cookies are strictly necessary and remain available without analytics consent.
-
-## Languages
-
-The dashboard, account pages, and admin panel support English, Spanish, German, and French. The
-language selector stores the choice only in the browser’s `bm_lang` cookie for 15 days. The
-application does not read or write a user-language preference in PostgreSQL. If no cookie exists,
-the request’s `Accept-Language` header is used and English is the fallback.
-
-The admin page also includes a read-only PostgreSQL overview with database size, connections,
-server/version information, table size estimates, and connection states. The “Refresh planner
-statistics” action runs `ANALYZE` only against the application tables. The PostgreSQL section
-also links to the separate pgAdmin 4 service. pgAdmin reuses `SMTP_USERNAME` as its initial login
-email and `ADMIN_PASSWORD` as its initial login password. In the Dockge deployment it is published
-by Traefik at the host configured by `PGADMIN_HOST`.
-
-## License
-
-This project is licensed under [Creative Commons Attribution-NonCommercial-ShareAlike 4.0
-International (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/). See
-[`LICENSE`](LICENSE) for the project license notice and canonical legal-code link.
+The container entrypoint applies migrations, collects static files, creates or
+updates the configured administrator, starts the BrandMeister collector when
+enabled, and serves the ASGI application with Daphne.
 
 ## Run with Docker Compose
 
-Copy `.env.example` to `.env` and set the database and admin credentials before starting the
-stack. The Compose file reads all deployment settings from `.env`:
+Create a local environment file and replace every placeholder secret:
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-The collector and web service share the PostgreSQL container. The default BM subscription is
-`everything`; use `BM_JOIN` to subscribe to a narrower source, destination, or repeater filter.
+The dashboard is available at <http://localhost:8000>. PostgreSQL and pgAdmin
+are included in the stack; PostgreSQL is exposed on port 5432 by default.
 
-### Deploy with Dockge and Traefik
-
-Use `compose-dockge.yaml` as the Dockge stack file and keep the project `.env` file beside it. It
-pulls the published `ghcr.io/ea7klk/bm-lh-new:latest` image for the collector and web services.
-The web service is not published directly on a host port; Traefik forwards to its internal port
-from `APP_PORT` (default `8000`). Set `TRAEFIK_HOST`, `TRAEFIK_ENTRYPOINT`, `TRAEFIK_CERTRESOLVER`,
-and the router/service names in `.env` to match the Traefik installation. The external network
-named by `TRAEFIK_NETWORK` must already exist on the Docker host.
-
-For the default settings, create it once with:
+The production-oriented `compose-dockge.yaml` uses the published
+`ghcr.io/ea7klk/bm-lh-new` image and Traefik labels:
 
 ```bash
-docker network create traefik
+docker compose -f compose-dockge.yaml up -d
 ```
 
-Then deploy `compose-dockge.yaml` from Dockge. Set `COOKIE_SECURE=true` when using the HTTPS
-Traefik route.
+## Run locally
 
-## Important interpretation
+Python 3.12 is recommended. Start PostgreSQL, then install the Django
+dependencies and set the database variables used in `config/settings.py`:
 
-This first version calls each completed BM network session a QSO. A multi-turn conversation is
-not directly identifiable from LastHeard alone; grouping separate transmissions into a single
-conversation would require a configurable inactivity gap and should be added as a derived view,
-not used to overwrite the exact source records.
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r django_app/requirements.txt
+export DJANGO_SECRET_KEY=development-only
+export DJANGO_POSTGRES_HOST=localhost
+export DJANGO_POSTGRES_DB=bminfo
+export DJANGO_POSTGRES_USER=bminfo
+export DJANGO_POSTGRES_PASSWORD=bminfo
+python django_app/manage.py migrate
+python django_app/manage.py bootstrap_admin
+python django_app/manage.py runserver
+```
+
+Run the collector separately during local development:
+
+```bash
+python django_app/manage.py collect_brandmeister
+```
+
+## Configuration
+
+`.env.example` documents the complete Compose configuration. Important groups
+are:
+
+- `POSTGRES_*` for the application database.
+- `DJANGO_*` for secrets, hosts, workers, administrator bootstrap, and the
+  embedded collector.
+- `BM_*`, `TALKGROUPS_*`, and QSO thresholds for BrandMeister ingestion.
+- `SMTP_*` for registration, verification, and password-reset email.
+- `MATOMO_*` for optional consent-gated analytics.
+- `TRAEFIK_*` for the Dockge deployment.
+
+Use `COOKIE_SECURE=true` and configure `DJANGO_CSRF_TRUSTED_ORIGINS` when the
+application is served over HTTPS. Keep `.env` out of version control.
+
+## Data behavior
+
+One completed BrandMeister `SessionID` represents one QSO. Duration is computed
+as `round((Stop - Start) * 1000)` milliseconds. Completed sessions below
+`KERCHUNK_THRESHOLD_SECONDS` are excluded from QSO views; values exactly equal
+to the threshold are retained. Local talkgroup 9 is excluded by default.
+
+Decoded events are retained for auditing according to
+`RAW_EVENT_KERCHUNK_THRESHOLD_SECONDS`. QSO writes remain idempotent by session
+ID so reconnects and duplicate deliveries do not duplicate transmissions.
+
+## Main endpoints
+
+- `/` dashboard
+- `/user/live-qsos/` authenticated live-QSO view and websocket stream
+- `/reports/` authenticated reports and CSV/XLSX/PDF exports
+- `/profile/` account profile and statistics
+- `/admin/` Django administration
+- `/administration/` maintenance and data-quality tools
+- `/health/` liveness endpoint
+- `/status/` database and collector status
+- `/api/dashboard/` dashboard data
+- `/api/qsos/` recent QSO data
+
+## Development checks
+
+```bash
+python django_app/manage.py check
+python django_app/manage.py makemigrations --check --dry-run
+```
+
+Add Django tests alongside new behavior and run them with `manage.py test` when
+the required PostgreSQL test database is available.

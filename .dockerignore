@@ -7,5 +7,4 @@
 **/*.py[cod]
 *.log
 postgres_data/
-django_postgres_data/
 staticfiles/
