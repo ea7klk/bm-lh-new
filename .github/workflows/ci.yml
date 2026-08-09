@@ -15,6 +15,20 @@ jobs:
     name: Tests
     if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: ci
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -24,50 +38,30 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: bminfo/requirements.txt
 
-      - name: Install development dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -e '.[dev]'
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r bminfo/requirements.txt
 
-      - name: Run tests
-        run: python -m pytest -q --junitxml=test-results.xml
-
-      - name: Display test results
-        if: always()
+      - name: Check Django application
+        env:
+          APP_SECRET_KEY: ci-only-secret
+          DB_NAME: ci
+          DB_USER: ci
+          DB_PASSWORD: ci
+          DB_HOST: localhost
         run: |
-          python - <<'PY'
-          import os
-          import xml.etree.ElementTree as ET
-          from pathlib import Path
+          python bminfo/manage.py check
+          python bminfo/manage.py makemigrations --check --dry-run
 
-          report = Path("test-results.xml")
-          if report.exists():
-              suite = ET.parse(report).getroot()
-              tests = int(suite.attrib.get("tests", 0))
-              failures = int(suite.attrib.get("failures", 0))
-              errors = int(suite.attrib.get("errors", 0))
-              skipped = int(suite.attrib.get("skipped", 0))
-              passed = max(tests - failures - errors - skipped, 0)
-              duration = suite.attrib.get("time", "0")
-              body = (
-                  "## Test results\n\n"
-                  "| Tests | Passed | Failed | Errors | Skipped | Duration |\n"
-                  "| ---: | ---: | ---: | ---: | ---: | ---: |\n"
-                  f"| {tests} | {passed} | {failures} | {errors} | {skipped} | {duration}s |\n"
-              )
-          else:
-              body = "## Test results\n\nJUnit test results were not generated.\n"
-
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
-              summary.write(body)
-          PY
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: test-results
-          path: test-results.xml
-          if-no-files-found: warn
+      - name: Run Django unit tests
+        env:
+          APP_SECRET_KEY: ci-only-secret
+          DB_NAME: ci
+          DB_USER: ci
+          DB_PASSWORD: ci
+          DB_HOST: localhost
+        run: python bminfo/manage.py test dashboard.tests --verbosity 2
 
   publish-image:
     name: Publish Docker image
@@ -89,11 +83,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata
+      - name: Extract image metadata
         id: metadata
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/${{ github.repository_owner }}/bminfo-new
           tags: |
             type=raw,value=${{ github.event.release.tag_name }}
             type=semver,pattern={{version}},value=${{ github.event.release.tag_name }}
@@ -103,10 +97,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build and publish Docker image
+      - name: Build and publish image
         uses: docker/build-push-action@v7
         with:
           context: .
+          file: ./bminfo/Dockerfile
           push: true
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}

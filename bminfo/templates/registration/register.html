@@ -1,0 +1,3 @@
+{% extends "dashboard/base.html" %}
+{% block title %}{{ title }} · BrandMeister Lastheard{% endblock %}
+{% block content %}<section class="panel section" style="max-width:560px;margin:0 auto"><h2>{{ labels.user.createAccount }}</h2>{% if completed %}<div class="message success">{{ labels.emailVerification.sent }}</div>{% else %}<form method="post" class="stacked-form">{% csrf_token %}{{ form.as_p }}<div class="form-actions"><button class="button" type="submit">{{ labels.user.createAccountButton }}</button></div></form>{% endif %}<p><a href="/login/">{{ labels.user.login }}</a></p></section>{% endblock %}

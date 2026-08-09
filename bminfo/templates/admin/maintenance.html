@@ -1,0 +1,17 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>BrandMeister maintenance and data quality</h1>
+<div class="module"><table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody id="qualityMetrics"><tr><td colspan="2">Loading data quality metrics…</td></tr></tbody></table></div>
+<div class="module"><h2>Maintenance</h2>
+  <form method="post" action="/administration/update-talkgroups/" onsubmit="return confirm('Update the talkgroup list now?')">{% csrf_token %}<button type="submit">Update Talkgroup list now</button></form>
+  <form method="post" action="/administration/rebuild-qsos/" onsubmit="return confirm('Rebuild the QSO table from raw events?')">{% csrf_token %}<button type="submit">Rebuild QSOs from raw events</button></form>
+  <form method="post" action="/administration/irrelevant-raw-events/" onsubmit="return confirm('Delete irrelevant and duplicate raw events?')">{% csrf_token %}<button type="submit">Delete irrelevant and duplicate raw events</button></form>
+  {% for months in '1236' %}<div style="margin:12px 0"><span>Older than {{ months }} month(s):</span><form data-retention-form data-kind="raw-events" data-months="{{ months }}" method="post" action="/administration/raw-events/{{ months }}/" style="display:inline;margin-left:10px">{% csrf_token %}<button type="submit">Delete raw events (<span data-count>…</span>)</button></form><form data-retention-form data-kind="qsos" data-months="{{ months }}" method="post" action="/administration/qsos/{{ months }}/" style="display:inline;margin-left:10px">{% csrf_token %}<button type="submit">Delete QSOs (<span data-count>…</span>)</button></form></div>{% endfor %}
+</div>
+<div class="module"><h2>Sessions</h2><table><tr><th>Callsign</th><th>Email</th><th>Active</th><th>Action</th></tr>{% for user in users %}<tr><td>{{ user.callsign }}</td><td>{{ user.email }}</td><td>{{ user.is_active }}</td><td><form method="post" action="/administration/users/{{ user.id }}/expire-sessions/" onsubmit="return confirm('Expire all sessions for {{ user.callsign }}?')">{% csrf_token %}<button type="submit">Expire sessions</button></form></td></tr>{% endfor %}</table></div>
+<script>
+const qualityMetrics=document.getElementById('qualityMetrics');
+fetch('/administration/data-quality/').then(response=>response.json()).then(data=>{qualityMetrics.innerHTML=Object.entries(data).map(([key,value])=>`<tr><td>${key}</td><td>${value??'—'}</td></tr>`).join('')}).catch(()=>{qualityMetrics.innerHTML='<tr><td colspan="2">Unable to load data quality metrics.</td></tr>'});
+document.querySelectorAll('[data-retention-form]').forEach(form=>{const kind=form.dataset.kind,months=form.dataset.months,count=form.querySelector('[data-count]');fetch(`/administration/counts/${kind}/${months}/`).then(r=>r.json()).then(data=>{count.textContent=Number(data.count||0).toLocaleString();form.onsubmit=()=>confirm(`Delete ${Number(data.count||0).toLocaleString()} ${kind} older than ${months} month(s)?`)}).catch(()=>{count.textContent='?';form.onsubmit=()=>confirm('Proceed with this cleanup?')})});
+</script>
+{% endblock %}
