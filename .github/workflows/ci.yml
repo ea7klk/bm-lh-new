@@ -15,6 +15,20 @@ jobs:
     name: Tests
     if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: ci
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -39,6 +53,15 @@ jobs:
         run: |
           python bminfo/manage.py check
           python bminfo/manage.py makemigrations --check --dry-run
+
+      - name: Run Django unit tests
+        env:
+          DJANGO_SECRET_KEY: ci-only-secret
+          DJANGO_POSTGRES_DB: ci
+          DJANGO_POSTGRES_USER: ci
+          DJANGO_POSTGRES_PASSWORD: ci
+          DJANGO_POSTGRES_HOST: localhost
+        run: python bminfo/manage.py test dashboard.tests --verbosity 2
 
   publish-image:
     name: Publish Docker image

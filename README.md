@@ -145,7 +145,9 @@ payload volume requires proportional headroom.
 ```bash
 python bminfo/manage.py check
 python bminfo/manage.py makemigrations --check --dry-run
+python bminfo/manage.py test dashboard.tests
 ```
 
-Add Django tests alongside new behavior and run them with `manage.py test` when
-the required PostgreSQL test database is available.
+Add Django tests alongside new behavior. The suite includes both
+`SimpleTestCase` unit tests and PostgreSQL-backed tests; run the complete suite
+with Docker Compose or another available PostgreSQL test database.

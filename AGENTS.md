@@ -65,10 +65,13 @@ Run the relevant checks before handing off changes:
 ```bash
 python bminfo/manage.py check
 python bminfo/manage.py makemigrations --check --dry-run
+python bminfo/manage.py test dashboard.tests
 ```
 
-Add regression tests for behavior changes and run Django tests against the
-required PostgreSQL test database. Do not weaken tests to make changes pass.
+Add regression tests for behavior changes. Keep unit tests independent of
+PostgreSQL where possible; use Django's database-backed test classes only for
+behavior that genuinely requires persistence. Do not weaken tests to make
+changes pass.
 
 ## Change hygiene
 
