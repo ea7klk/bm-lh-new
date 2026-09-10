@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: pgadmin-env
+    namespace: bminfo
+type: Opaque
+stringData:
+    PGADMIN_DEFAULT_EMAIL: ""
+    PGADMIN_DEFAULT_PASSWORD: ""
+    PATH: ENC[AES256_GCM,data:k5O5aztu6BNCpy3czNUi2YTMMCaNTYtcnpYxsrcn+LMF/9WyTggM1aBAm/+iwrXaAw6mBQi1P/dN+F+TyxXhLqhwktTguldcobDp,iv:OlRc7r+HJOX9z6tGkG2Oe3+A6+UzOJrgEso17IEg3Hc=,tag:q+lDn2nUG7Mf1UT4XGSTyA==,type:str]
+    PYTHON_VERSION: ENC[AES256_GCM,data:qBMM73cP,iv:MHCuZETbCWeJKY4Y4GtmAbMOa2wz0kw2zMNcqr/v4Eg=,tag:QRbshRuTVpQg5ZP7A/uEJg==,type:str]
+    PYTHON_SHA256: ENC[AES256_GCM,data:EOb6QNz8sz7L3KkLdDaN+p12y4TtTyyc14vzwRDpw+V+qUOevybrpm+mxrScB4f7QNKSFWsNVTOnHAWtByjyqw==,iv:Ptn0kLTZaWpgtXcddLE9QN8xVY0zH64hkst9npZRXBA=,tag:BwIYOgCEid0nSVvvu07SjQ==,type:str]
+    PYTHONPATH: ENC[AES256_GCM,data:j+vTOJHJgaQ6,iv:S6ksbuK12mtoeXbsptxODb3gdspeqOtSoUzY+RBji5U=,tag:5koftu6raL21GsPN9Ko4qg==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSByT2xkRFpocFBST0RSRFlP
+            Z2taKzk4TXZLeTJDcFdITHhJNVk1WGtZZEdBCld3aGd0WS9YVkdpenZKOEVTMlVa
+            SXJkdTVlUzJSLzI2Y3grdkJkK1VHQUUKLS0tIEV5ZkpRb1QzUFdZa0N4NzVUbWIv
+            VWh5S04vNWpDNkloSkFWNUs1WHpOQ0kKyYCQ9aqDcH4yEd6G0s/vIfxI6fa17PRZ
+            bE86VX4YxnbuVZIPApRB1RnUhAHgOCEI8Y1JRyYzZWFkh+oBxeONQg==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1cvpkdlz2uysxef3vf4q4zca9trcjdcy3u2dfmy4wfaeqssnsxalqp5u9h2
+    encrypted_regex: ^(data|stringData|command|args|exec)$
+    lastmodified: "2026-09-10T09:33:15Z"
+    mac: ENC[AES256_GCM,data:qZhdpF5PnKyBCzPIrch1JkEivO3Vd0Ta6wfAbGwWhjmzJ6bfGcTHBWC7vJtuH/puQ2rQ7++j++mQMu5ASAOzk22Cp4owrdLRTB77UzDEIZarrr02Yzs+XpKO6ga58pHQibvDtBHqoGfN1bMj+kCEhbD9+2miODJ894dbORTlbXw=,iv:3ZfhxixMabqwdFpq56aruB8zDmIAx8oRaXMY45MzLDU=,tag:eYoHmEXx+kYuCJH7O7uR8A==,type:str]
+    version: 3.13.3

@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: postgres
+    namespace: bminfo
+spec:
+    replicas: 1
+    strategy:
+        type: Recreate
+    selector:
+        matchLabels:
+            app.kubernetes.io/name: postgres
+    template:
+        metadata:
+            labels:
+                app.kubernetes.io/name: postgres
+        spec:
+            nodeSelector:
+                kubernetes.io/hostname: spainip-k3s
+            automountServiceAccountToken: false
+            terminationGracePeriodSeconds: 120
+            containers:
+                - name: postgres
+                  image: postgres@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+                  imagePullPolicy: IfNotPresent
+                  envFrom:
+                    - secretRef:
+                        name: postgres-env
+                  resources:
+                    requests:
+                        cpu: 25m
+                        memory: 8Gi
+                  command:
+                    - ENC[AES256_GCM,data:yO8i3bcnVtlx+Gwhwml8G80C+pM=,iv:mCBlSz5jZdiT+P9NzO2qgs71IxY2CAdz11CPwMMUb3I=,tag:v630BYUob1R91BEVlea34A==,type:str]
+                  args:
+                    - ENC[AES256_GCM,data:JAHf9mLc0cI=,iv:Cb+8dPk16Xr+GPG7zSzklwm/78UwvahbZO6RoX1lVFs=,tag:A5/py/NJSREBuQFA5DrTdg==,type:str]
+                    - ENC[AES256_GCM,data:89M=,iv:C3ZwfPWniBKB3CzJGxmZRwNEq5XiAQ+N2im0B9ckdNU=,tag:NGyMn6OPGdJnT71a6piShw==,type:str]
+                    - ENC[AES256_GCM,data:lVxMtscgBBS1UXLOVotmC1tR2w==,iv:S9IfVSVUlqICmaNUgT0uab/bG083XM3xlKlrAvfp4Ao=,tag:H4Cpa4tub3xvJyCF2fjnFQ==,type:str]
+                    - ENC[AES256_GCM,data:01I=,iv:VCJKTAAsiL4zXf52YvDQHbw9R646NQqpFwKHAyRi2Qw=,tag:2qnJGxnp43oIPaFNZLEboA==,type:str]
+                    - ENC[AES256_GCM,data:S4L2QftTFJ1keP318nHFSeFGTE4=,iv:k7tRbJesI2weBmcJkOyijeNuq+JvIvmkzuo6r9X6YYE=,tag:+1d6WFg+mKSEVnuouB+wHw==,type:str]
+                    - ENC[AES256_GCM,data:Wmo=,iv:8lKR6gf4YtE6V6R3qzkcwSDT3ZpigTZdepSszRkJahA=,tag:3GwejhR/7yXkwur3fj51bg==,type:str]
+                    - ENC[AES256_GCM,data:TymHABl5sWu/W1+V8N/fY5nSH6GfvWX8,iv:bVKLuNDWo8BzYdoeu6pdagrwkfG8I4EKpuvNUdiW7Xw=,tag:a1ZaSHej1U0nmh1DAZlAXg==,type:str]
+                    - ENC[AES256_GCM,data:1EU=,iv:m/Zww3WjTOvUFVMFQD7nLjf1gsdW9HiRXSBJAhboesU=,tag:inTH9cv9LZZwsvRKqCZd+g==,type:str]
+                    - ENC[AES256_GCM,data:mzeq1H7Eg6nAuRfW,iv:GKdGlSZ1p9yhfxsWY5Sb3tv4ZRWUEHzKuTBsZQghafc=,tag:w2DejlcEdUBP70EvbvIDdQ==,type:str]
+                    - ENC[AES256_GCM,data:cOM=,iv:7o0qweRHttDV9CSrsDwFtZJW3FuUUECYKEMt4Cka5bE=,tag:4bqtjVbgNlYubgBi2HhSHQ==,type:str]
+                    - ENC[AES256_GCM,data:s3bsgzHY5HsalBxmsfAHPymKjT0U/T9sUUc=,iv:4kCpqKxtVSshnBrA6ekFV+brtYdf1uwnreu4CbccTlQ=,tag:s/OhA/jVwFreuxfl38hnMA==,type:str]
+                    - ENC[AES256_GCM,data:Pzk=,iv:d7w+z8oaC3FfteYCZ+YsHuhNtVBitabUSsX6nLfPWSA=,tag:E0lPwrxVD3YvCBjb+7l1dA==,type:str]
+                    - ENC[AES256_GCM,data:yzA5tHJpWyL2yw1/aMvOFA==,iv:Y5zrkFN1QdjN0v259cokBmfennK9Ikfc6thKv3RfPcY=,tag:9vzZIPUlpmHW5n3QkIFFrA==,type:str]
+                  workingDir: /
+                  ports:
+                    - name: p5432-tcp
+                      containerPort: 5432
+                      protocol: TCP
+                  volumeMounts:
+                    - name: v-f5b2c398ce5127fa
+                      mountPath: /var/lib/postgresql/data
+                      readOnly: false
+                    - name: shm
+                      mountPath: /dev/shm
+                  readinessProbe:
+                    exec:
+                        command:
+                            - ENC[AES256_GCM,data:SYabJnYBvA==,iv:fe8YMwlWO1nLAHmn1eQlUjFoMKHJyOHvJDdBlooFdRY=,tag:KcXlTNjYV8FCl+OVKu+HBg==,type:str]
+                            - ENC[AES256_GCM,data:4Sc=,iv:dJrCBnWFpMT7ev58Rp3Uxa5H1Eqa6SJx2UsgMEbP/uE=,tag:DEuLP8+i4Cx8Zn87OeIigg==,type:str]
+                            - ENC[AES256_GCM,data:fyZ9m5lYQhQ82tK5GZHu8EU+ozuq33mYJTJLnhYzVVxWkPvRmxyrx+FMi0I9Jkmm,iv:XAbo4G6v/Wisr7blPSU0oX0ZnAtDAbnavOSWfKKG2/s=,tag:d0PIaFuHtvRdC5OBJLPKgg==,type:str]
+                    periodSeconds: 10
+                    timeoutSeconds: 5
+                    failureThreshold: 3
+                  startupProbe:
+                    exec:
+                        command:
+                            - ENC[AES256_GCM,data:MCDhuLRCPw==,iv:Xsk7JWwHDxW34eFT7ZA5vX+HNaqeexAtexRf0j1OyYs=,tag:AL8Httz3WcLdavnGSutj2g==,type:str]
+                            - ENC[AES256_GCM,data:kzs=,iv:K9XobhP/C0aSN6c3OpPRtpR9pM+c28I7vUbhLuAeMy0=,tag:FCrWyOGhuTjYBIyJQIJP3Q==,type:str]
+                            - ENC[AES256_GCM,data:v8DOQSHfWZ1qqpZy2rmzCddbWpcK6R5t93R/BRcdYwYdnJBW/s0Kf7gijAkft2o2,iv:S9G3WpgFO3GAyt24RFkoMIA8RQ69+Le6Gub5x7WFDbc=,tag:HvgVEZT7BV6p04/B7ouCGA==,type:str]
+                    periodSeconds: 10
+                    timeoutSeconds: 5
+                    failureThreshold: 180
+            volumes:
+                - name: v-f5b2c398ce5127fa
+                  persistentVolumeClaim:
+                    claimName: v-f5b2c398ce5127fa
+                - name: shm
+                  emptyDir:
+                    medium: Memory
+                    sizeLimit: "268435456"
+            imagePullSecrets:
+                - name: registry-credentials
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBQUSt1OUo4aFVydU1VcmFk
+            eWllU1JXbXBINnVheTFNcW9tSmNtKzdlRno0CmxXZHpURVFQTm5ZZjFmTVZUSjN3
+            dDBZc005anljUTRDMVB2MmdPak5oYU0KLS0tIDdTUmgyaW44UTRyZEJZY1YxclU5
+            LzBzbVZYN2tzei9ZV2JiTGpzWmlmRUUKrjNFKHdvTHeuxv42vMLS+8ysP+ndL8c6
+            nBetR4YLN8u+fJIPVJMvqruY6EUbNd6MmwjC0I4mrBM5dGR3rnxZ3g==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1cvpkdlz2uysxef3vf4q4zca9trcjdcy3u2dfmy4wfaeqssnsxalqp5u9h2
+    encrypted_regex: ^(data|stringData|command|args|exec)$
+    lastmodified: "2026-09-10T09:33:20Z"
+    mac: ENC[AES256_GCM,data:edva9r9p8V6Lc0hohtD6xx0ItJa+Uo/JIEOwSeXpipbn73oLuDSAesvFStv3r5Y9SOF5fw/kkwOx1/8kKfKeUpVvVTi0eEbpd8hFNhhlCdiQyCaeN2Zo1TUBRzdxEDx3DxubEUjgo6Y1sJbsPA+qhDzcEQxY59W8yfITXuemcec=,iv:AyxaEqUrqxMu4XnbmFasskVjLWlgqpA7V9eaDug6W6Q=,tag:8KEcjQND01iGNMl+ZPAd1Q==,type:str]
+    version: 3.13.3

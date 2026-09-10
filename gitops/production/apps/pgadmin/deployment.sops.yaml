@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: pgadmin
+    namespace: bminfo
+spec:
+    replicas: 1
+    strategy:
+        type: Recreate
+    selector:
+        matchLabels:
+            app.kubernetes.io/name: pgadmin
+    template:
+        metadata:
+            labels:
+                app.kubernetes.io/name: pgadmin
+        spec:
+            nodeSelector:
+                kubernetes.io/hostname: spainip-k3s
+            automountServiceAccountToken: false
+            terminationGracePeriodSeconds: 120
+            containers:
+                - name: pgadmin
+                  image: dpage/pgadmin4@sha256:40fa840c5bb7c8463957f1255b01283732c2d8c9396a956d180f8e6c296753b3
+                  imagePullPolicy: IfNotPresent
+                  envFrom:
+                    - secretRef:
+                        name: pgadmin-env
+                  resources:
+                    requests:
+                        cpu: 25m
+                        memory: 64Mi
+                  command:
+                    - ENC[AES256_GCM,data:HAjYq0g7k06o0YMlIzg=,iv:gpzz5XxNglBRYkO1GD505NDQcqHQWi8QjoU8Ouj98rs=,tag:hpu1Ym1eAH9TiKcCUEWrEQ==,type:str]
+                  args: []
+                  workingDir: /pgadmin4
+                  securityContext:
+                    runAsUser: 5050
+                  ports:
+                    - name: p80-tcp
+                      containerPort: 80
+                      protocol: TCP
+                    - name: p443-tcp
+                      containerPort: 443
+                      protocol: TCP
+                  volumeMounts:
+                    - name: v-170642bc4e016938
+                      mountPath: /var/lib/pgadmin
+                      readOnly: false
+                    - name: shm
+                      mountPath: /dev/shm
+                  readinessProbe:
+                    tcpSocket:
+                        port: 80
+                    periodSeconds: 10
+                  startupProbe:
+                    tcpSocket:
+                        port: 80
+                    periodSeconds: 10
+                    failureThreshold: 180
+            volumes:
+                - name: v-170642bc4e016938
+                  persistentVolumeClaim:
+                    claimName: v-170642bc4e016938
+                - name: shm
+                  emptyDir:
+                    medium: Memory
+                    sizeLimit: "67108864"
+            imagePullSecrets:
+                - name: registry-credentials
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSB6enB6eUpWQXYwdnNSRTZr
+            K1o3RXB5ZlN6RVJWODZrVlBPWThDNmhOWW1nCmVrYnBublhsNU9saFlOVnM1UXd3
+            Tk1mL2RaQVhNNC9QWGlMSHA1Ri9qdzAKLS0tIFhWMllvWTFRSXFQeXZNWEErQjRl
+            V1UyNzZ5Y3A1SEs5aWRGRUh0TVJrMzQKTQv6beorg99vF8rXQSixW5pn4ggPP+kE
+            JFk/kj3x2VDeX7iwS/tAXBItX4qs+X0Jv3zOOaKKRAVeL9ta6SnOhg==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1cvpkdlz2uysxef3vf4q4zca9trcjdcy3u2dfmy4wfaeqssnsxalqp5u9h2
+    encrypted_regex: ^(data|stringData|command|args|exec)$
+    lastmodified: "2026-09-10T09:33:20Z"
+    mac: ENC[AES256_GCM,data:VBuOfjhGnL0odocfdIDderjwtAbmy8vsOhLCn8rZzoW8QJVpoM6e1g0IRC9ClTeHZB0YpoaosFT3s6e7ICXcDm+UJkO+2g6nHYF0NE4p7YRI4GAhW6awFSJSPq4zStog4jGtSCfwKJftxNEIl3NqwdTfRx2uY6sE/TDGJKqq4Qo=,iv:M8sC1AA2hJ1G9M1dm8ioPLUdlkEHnrNqkFy+USUZBSs=,tag:/1XGXhy1r/QR5sMrQ7iWwQ==,type:str]
+    version: 3.13.3

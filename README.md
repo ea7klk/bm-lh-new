@@ -42,6 +42,13 @@ The production-oriented `compose-dockge.yaml` uses the published
 docker compose -f compose-dockge.yaml up -d
 ```
 
+## Production Kubernetes deployment
+
+Production Flux manifests live in [`gitops/production`](gitops/production).
+See the [GitOps operator guide](gitops/README.md) for source bindings, retained
+volume identities, SOPS editing, validation, and rollback. Cluster bootstrap
+and shared infrastructure remain in `spainip/infra`.
+
 ## Run locally
 
 Python 3.12 is recommended. Start PostgreSQL, then install the Django

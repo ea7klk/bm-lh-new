@@ -1,0 +1,16 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: web-bm
+  namespace: bminfo
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - kind: Rule
+    match: Host(`bminfo.ea7klk.es`)
+    services:
+    - name: web
+      port: 8000
+  tls:
+    certResolver: acmeresolver

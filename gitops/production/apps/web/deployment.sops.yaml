@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: web
+    namespace: bminfo
+spec:
+    replicas: 1
+    strategy:
+        type: Recreate
+    selector:
+        matchLabels:
+            app.kubernetes.io/name: web
+    template:
+        metadata:
+            labels:
+                app.kubernetes.io/name: web
+        spec:
+            nodeSelector:
+                kubernetes.io/hostname: spainip-k3s
+            automountServiceAccountToken: false
+            terminationGracePeriodSeconds: 120
+            containers:
+                - name: web
+                  image: ghcr.io/ea7klk/bminfo-new@sha256:00b04f8c37d715f793a37fac8ce3be7c379eb6ebca16bb74ec81333462cc5d1b
+                  imagePullPolicy: IfNotPresent
+                  envFrom:
+                    - secretRef:
+                        name: web-env
+                  resources:
+                    requests:
+                        cpu: 25m
+                        memory: 64Mi
+                  command:
+                    - ENC[AES256_GCM,data:97rtrRE0JTRLxdWfThzZ,iv:Pb0AqEr4OhoA7s+pqu71H2iXNuk61/fMW4A7Aj/X61g=,tag:T7eZopxQ6QSavVmRUHKxlw==,type:str]
+                  args: []
+                  workingDir: /app
+                  ports:
+                    - name: p8000-tcp
+                      containerPort: 8000
+                      protocol: TCP
+                  volumeMounts:
+                    - name: shm
+                      mountPath: /dev/shm
+                  readinessProbe:
+                    exec:
+                        command:
+                            - ENC[AES256_GCM,data:mYS/TJBr,iv:SDsQTppSRZ/xbLCV/dHFMwNH18kzJF6ZJ68/iqcUQGw=,tag:BqVfbozlLOdY2IVkb7I/CQ==,type:str]
+                            - ENC[AES256_GCM,data:dls=,iv:E1HwfQxT34U3azhqK8pZeXrWgOY41ifv93lQ5RwXZOI=,tag:42G/SbxpDTr99UChlo0kww==,type:str]
+                            - ENC[AES256_GCM,data:1x78VtZ4U0DrLNdmNsh5Ew2pn5DYfJ0OpTUcpXrTqnc+X6fM512aWymSYfju7M7SlSlSKvmkwT6hArhUoPO1+mKXx1J84sL3Osximc92++qyvQyPzVbWxlk=,iv:v2bkNknVlIPhytWQVtM+oy34ps2xpBTc1XxtWGTWUyY=,tag:ildkCyiQ5hoBiIMLzvMghw==,type:str]
+                    periodSeconds: 10
+                    timeoutSeconds: 5
+                    failureThreshold: 3
+                  startupProbe:
+                    exec:
+                        command:
+                            - ENC[AES256_GCM,data:ifuZI77L,iv:5OcebZjMGhNG6OLutH1knQ2GETqqXPR3iIgrxOoH4Xg=,tag:ggcjsfeOl8vKCsl5U8pWZw==,type:str]
+                            - ENC[AES256_GCM,data:vnk=,iv:bwA3/MwckjEnse6Q6EBkoOzbSQlf5DO4vGu9Ga/3Bgc=,tag:gDE4i9I0w3vbIcz7lmP9TA==,type:str]
+                            - ENC[AES256_GCM,data:mzsGT1VaVbv6fI3vGUueVjFnEQxmlIOBQyHesbiVv0hz40oXzd2EJBHUU1b8VlB1AKz+udOewgGRxhQ9uJxx+NNtTlUpgOVSPpM9oakx1rh0KZn3G/3rn7M=,iv:Xh63JhrI4a8tcmVuO9iiBJMi8HPVQJ8mWo3xOhUlpWs=,tag:4LS/H4AoKJr/DImqNcGjoA==,type:str]
+                    periodSeconds: 10
+                    timeoutSeconds: 5
+                    failureThreshold: 180
+            volumes:
+                - name: shm
+                  emptyDir:
+                    medium: Memory
+                    sizeLimit: "67108864"
+            imagePullSecrets:
+                - name: registry-credentials
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBWbVpYMjBMMnZaMG5VdzdQ
+            WUdlNTkwazkrV2U3VHIyam9WQ0FINTQ5eHl3CmUwc3RPeitrdm13N0J0dWNPOXJu
+            ZlBpbUJvVkdCd0FxSDRKQU5qYzNlQW8KLS0tIGZZaG80WGVKU0RDMGw5VEw2S2V0
+            R2UwUFhLRTNRYkRwQ2hvbmpGQ0VoM2sKrk8wBvVR4aNIy+xdRmp3Mx+vpcTzaMrN
+            3TvH0+uhFflxKbpv3O8MxtnuawGDWCtii77EbnHIXfHqEDOfAnQ/OA==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1cvpkdlz2uysxef3vf4q4zca9trcjdcy3u2dfmy4wfaeqssnsxalqp5u9h2
+    encrypted_regex: ^(data|stringData|command|args|exec)$
+    lastmodified: "2026-09-10T09:33:20Z"
+    mac: ENC[AES256_GCM,data:ULGBuU/7XjnJ29iCDugBFGMEaGBY4kBWemQhzIajYagde08v9MoM5i4e/NwnXLzOmlG4Mfkjmje/8WSIFEtZ0+idVudxd0S31ohpH20spvDTif66RYvs4s7IXbWHMyZJroIR1gI1HJ9U1aWodLGI7N4R9kDGI8vTcCNKJLAee4I=,iv:iQCEJXSF8vOPfC/xDPdUyhsOPqOXwnij+xi6fpLRsbY=,tag:6p3q8APOlXLIWDbb8hfhHg==,type:str]
+    version: 3.13.3

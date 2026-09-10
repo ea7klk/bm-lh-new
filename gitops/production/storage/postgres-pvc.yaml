@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: v-f5b2c398ce5127fa
+  namespace: bminfo
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: ''
+  volumeName: bminfo-v-f5b2c398ce5127fa
+  resources:
+    requests:
+      storage: 1Gi
