@@ -44,10 +44,10 @@ docker compose -f compose-dockge.yaml up -d
 
 ## Production Kubernetes deployment
 
-Production Flux manifests live in [`gitops/production`](gitops/production).
-See the [GitOps operator guide](gitops/README.md) for source bindings, retained
-volume identities, SOPS editing, validation, and rollback. Cluster bootstrap
-and shared infrastructure remain in `spainip/infra`.
+Production ArgoCD manifests live in [`gitops/production`](gitops/production).
+See the [GitOps operator guide](gitops/README.md) for retained volume
+identities, SOPS editing, validation, and rollback. ArgoCD, cluster bootstrap,
+Traefik, and shared infrastructure remain in `spainip/infra`.
 
 ## Run locally
 

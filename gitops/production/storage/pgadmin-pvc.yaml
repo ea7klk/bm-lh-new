@@ -3,8 +3,6 @@ kind: PersistentVolumeClaim
 metadata:
   name: v-170642bc4e016938
   namespace: bminfo
-  annotations:
-    kustomize.toolkit.fluxcd.io/prune: disabled
 spec:
   accessModes:
   - ReadWriteOnce
