@@ -7,10 +7,10 @@ metadata:
       exec:
         path: ksops
 files:
-./storage/registry.sops.yaml
-./apps/pgadmin/deployment.sops.yaml
-./apps/pgadmin/environment.sops.yaml
-./apps/postgres/deployment.sops.yaml
-./apps/postgres/environment.sops.yaml
-./apps/web/deployment.sops.yaml
-./apps/web/environment.sops.yaml
+- ./storage/registry.sops.yaml
+- ./apps/pgadmin/deployment.sops.yaml
+- ./apps/pgadmin/environment.sops.yaml
+- ./apps/postgres/deployment.sops.yaml
+- ./apps/postgres/environment.sops.yaml
+- ./apps/web/deployment.sops.yaml
+- ./apps/web/environment.sops.yaml
