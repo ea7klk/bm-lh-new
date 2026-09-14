@@ -4,7 +4,6 @@
   "metadata": {
     "name": "bminfo-v-170642bc4e016938",
     "annotations": {
-      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"PersistentVolume\",\"metadata\":{\"annotations\":{},\"name\":\"bminfo-v-170642bc4e016938\"},\"spec\":{\"accessModes\":[\"ReadWriteOnce\"],\"capacity\":{\"storage\":\"1Gi\"},\"local\":{\"path\":\"/opt/stacks/bminfo/pgadmin_data\"},\"nodeAffinity\":{\"required\":{\"nodeSelectorTerms\":[{\"matchExpressions\":[{\"key\":\"kubernetes.io/hostname\",\"operator\":\"In\",\"values\":[\"spainip-k3s\"]}]}]}},\"persistentVolumeReclaimPolicy\":\"Retain\",\"volumeMode\":\"Filesystem\"}}\n",
       "pv.kubernetes.io/bound-by-controller": "yes"
     }
   },
@@ -53,7 +52,6 @@
   "metadata": {
     "name": "bminfo-v-f5b2c398ce5127fa",
     "annotations": {
-      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"PersistentVolume\",\"metadata\":{\"annotations\":{},\"name\":\"bminfo-v-f5b2c398ce5127fa\"},\"spec\":{\"accessModes\":[\"ReadWriteOnce\"],\"capacity\":{\"storage\":\"1Gi\"},\"local\":{\"path\":\"/opt/stacks/bminfo/django_postgres_data\"},\"nodeAffinity\":{\"required\":{\"nodeSelectorTerms\":[{\"matchExpressions\":[{\"key\":\"kubernetes.io/hostname\",\"operator\":\"In\",\"values\":[\"spainip-k3s\"]}]}]}},\"persistentVolumeReclaimPolicy\":\"Retain\",\"volumeMode\":\"Filesystem\"}}\n",
       "pv.kubernetes.io/bound-by-controller": "yes"
     }
   },
@@ -103,7 +101,6 @@
     "name": "v-170642bc4e016938",
     "namespace": "bminfo",
     "annotations": {
-      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"PersistentVolumeClaim\",\"metadata\":{\"annotations\":{},\"name\":\"v-170642bc4e016938\",\"namespace\":\"bminfo\"},\"spec\":{\"accessModes\":[\"ReadWriteOnce\"],\"resources\":{\"requests\":{\"storage\":\"1Gi\"}},\"storageClassName\":\"\",\"volumeMode\":\"Filesystem\",\"volumeName\":\"bminfo-v-170642bc4e016938\"}}\n",
       "pv.kubernetes.io/bind-completed": "yes"
     }
   },
@@ -129,7 +126,6 @@
     "name": "v-f5b2c398ce5127fa",
     "namespace": "bminfo",
     "annotations": {
-      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"PersistentVolumeClaim\",\"metadata\":{\"annotations\":{},\"name\":\"v-f5b2c398ce5127fa\",\"namespace\":\"bminfo\"},\"spec\":{\"accessModes\":[\"ReadWriteOnce\"],\"resources\":{\"requests\":{\"storage\":\"1Gi\"}},\"storageClassName\":\"\",\"volumeMode\":\"Filesystem\",\"volumeName\":\"bminfo-v-f5b2c398ce5127fa\"}}\n",
       "pv.kubernetes.io/bind-completed": "yes"
     }
   },
