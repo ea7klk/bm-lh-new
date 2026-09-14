@@ -1,82 +1,12 @@
----
-{
-  "apiVersion": "v1",
-  "kind": "PersistentVolumeClaim",
-  "metadata": {
-    "annotations": {
-      "pv.kubernetes.io/bind-completed": "yes"
-    },
-    "finalizers": [
-      "kubernetes.io/pvc-protection"
-    ],
-    "labels": {
-      "kustomize.toolkit.fluxcd.io/name": "bminfo-storage",
-      "kustomize.toolkit.fluxcd.io/namespace": "flux-system"
-    },
-    "name": "v-170642bc4e016938",
-    "namespace": "bminfo"
-  },
-  "spec": {
-    "accessModes": [
-      "ReadWriteOnce"
-    ],
-    "resources": {
-      "requests": {
-        "storage": "1Gi"
-      }
-    },
-    "storageClassName": "",
-    "volumeMode": "Filesystem",
-    "volumeName": "bminfo-v-170642bc4e016938"
-  }
-}
-
----
-{
-  "apiVersion": "v1",
-  "kind": "PersistentVolumeClaim",
-  "metadata": {
-    "annotations": {
-      "pv.kubernetes.io/bind-completed": "yes"
-    },
-    "finalizers": [
-      "kubernetes.io/pvc-protection"
-    ],
-    "labels": {
-      "kustomize.toolkit.fluxcd.io/name": "bminfo-storage",
-      "kustomize.toolkit.fluxcd.io/namespace": "flux-system"
-    },
-    "name": "v-f5b2c398ce5127fa",
-    "namespace": "bminfo"
-  },
-  "spec": {
-    "accessModes": [
-      "ReadWriteOnce"
-    ],
-    "resources": {
-      "requests": {
-        "storage": "1Gi"
-      }
-    },
-    "storageClassName": "",
-    "volumeMode": "Filesystem",
-    "volumeName": "bminfo-v-f5b2c398ce5127fa"
-  }
-}
-
----
 {
   "apiVersion": "v1",
   "kind": "PersistentVolume",
   "metadata": {
-    "finalizers": [
-      "kubernetes.io/pv-protection"
-    ],
-    "labels": {
-      "kustomize.toolkit.fluxcd.io/name": "bminfo-storage",
-      "kustomize.toolkit.fluxcd.io/namespace": "flux-system"
-    },
-    "name": "bminfo-v-170642bc4e016938"
+    "name": "bminfo-v-170642bc4e016938",
+    "annotations": {
+      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"PersistentVolume\",\"metadata\":{\"annotations\":{},\"name\":\"bminfo-v-170642bc4e016938\"},\"spec\":{\"accessModes\":[\"ReadWriteOnce\"],\"capacity\":{\"storage\":\"1Gi\"},\"local\":{\"path\":\"/opt/stacks/bminfo/pgadmin_data\"},\"nodeAffinity\":{\"required\":{\"nodeSelectorTerms\":[{\"matchExpressions\":[{\"key\":\"kubernetes.io/hostname\",\"operator\":\"In\",\"values\":[\"spainip-k3s\"]}]}]}},\"persistentVolumeReclaimPolicy\":\"Retain\",\"volumeMode\":\"Filesystem\"}}\n",
+      "pv.kubernetes.io/bound-by-controller": "yes"
+    }
   },
   "spec": {
     "accessModes": [
@@ -90,8 +20,7 @@
       "kind": "PersistentVolumeClaim",
       "name": "v-170642bc4e016938",
       "namespace": "bminfo",
-      "resourceVersion": "1111",
-      "uid": "15578f7b-4618-4f79-b2ca-58ff010df3cd"
+      "uid": "69eafbab-ae6b-4a5c-95be-d7829dba2859"
     },
     "local": {
       "path": "/opt/stacks/bminfo/pgadmin_data"
@@ -117,20 +46,16 @@
     "volumeMode": "Filesystem"
   }
 }
-
 ---
 {
   "apiVersion": "v1",
   "kind": "PersistentVolume",
   "metadata": {
-    "finalizers": [
-      "kubernetes.io/pv-protection"
-    ],
-    "labels": {
-      "kustomize.toolkit.fluxcd.io/name": "bminfo-storage",
-      "kustomize.toolkit.fluxcd.io/namespace": "flux-system"
-    },
-    "name": "bminfo-v-f5b2c398ce5127fa"
+    "name": "bminfo-v-f5b2c398ce5127fa",
+    "annotations": {
+      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"PersistentVolume\",\"metadata\":{\"annotations\":{},\"name\":\"bminfo-v-f5b2c398ce5127fa\"},\"spec\":{\"accessModes\":[\"ReadWriteOnce\"],\"capacity\":{\"storage\":\"1Gi\"},\"local\":{\"path\":\"/opt/stacks/bminfo/django_postgres_data\"},\"nodeAffinity\":{\"required\":{\"nodeSelectorTerms\":[{\"matchExpressions\":[{\"key\":\"kubernetes.io/hostname\",\"operator\":\"In\",\"values\":[\"spainip-k3s\"]}]}]}},\"persistentVolumeReclaimPolicy\":\"Retain\",\"volumeMode\":\"Filesystem\"}}\n",
+      "pv.kubernetes.io/bound-by-controller": "yes"
+    }
   },
   "spec": {
     "accessModes": [
@@ -144,8 +69,7 @@
       "kind": "PersistentVolumeClaim",
       "name": "v-f5b2c398ce5127fa",
       "namespace": "bminfo",
-      "resourceVersion": "1112",
-      "uid": "e5b849c3-abb8-4962-ae04-5065e456507c"
+      "uid": "6c9ec093-4bb4-42af-8878-481da66402fd"
     },
     "local": {
       "path": "/opt/stacks/bminfo/django_postgres_data"
@@ -169,5 +93,57 @@
     },
     "persistentVolumeReclaimPolicy": "Retain",
     "volumeMode": "Filesystem"
+  }
+}
+---
+{
+  "apiVersion": "v1",
+  "kind": "PersistentVolumeClaim",
+  "metadata": {
+    "name": "v-170642bc4e016938",
+    "namespace": "bminfo",
+    "annotations": {
+      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"PersistentVolumeClaim\",\"metadata\":{\"annotations\":{},\"name\":\"v-170642bc4e016938\",\"namespace\":\"bminfo\"},\"spec\":{\"accessModes\":[\"ReadWriteOnce\"],\"resources\":{\"requests\":{\"storage\":\"1Gi\"}},\"storageClassName\":\"\",\"volumeMode\":\"Filesystem\",\"volumeName\":\"bminfo-v-170642bc4e016938\"}}\n",
+      "pv.kubernetes.io/bind-completed": "yes"
+    }
+  },
+  "spec": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
+    "resources": {
+      "requests": {
+        "storage": "1Gi"
+      }
+    },
+    "storageClassName": "",
+    "volumeMode": "Filesystem",
+    "volumeName": "bminfo-v-170642bc4e016938"
+  }
+}
+---
+{
+  "apiVersion": "v1",
+  "kind": "PersistentVolumeClaim",
+  "metadata": {
+    "name": "v-f5b2c398ce5127fa",
+    "namespace": "bminfo",
+    "annotations": {
+      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"PersistentVolumeClaim\",\"metadata\":{\"annotations\":{},\"name\":\"v-f5b2c398ce5127fa\",\"namespace\":\"bminfo\"},\"spec\":{\"accessModes\":[\"ReadWriteOnce\"],\"resources\":{\"requests\":{\"storage\":\"1Gi\"}},\"storageClassName\":\"\",\"volumeMode\":\"Filesystem\",\"volumeName\":\"bminfo-v-f5b2c398ce5127fa\"}}\n",
+      "pv.kubernetes.io/bind-completed": "yes"
+    }
+  },
+  "spec": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
+    "resources": {
+      "requests": {
+        "storage": "1Gi"
+      }
+    },
+    "storageClassName": "",
+    "volumeMode": "Filesystem",
+    "volumeName": "bminfo-v-f5b2c398ce5127fa"
   }
 }
