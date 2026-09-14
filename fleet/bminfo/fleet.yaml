@@ -1,0 +1,5 @@
+defaultNamespace: bminfo
+kustomize:
+  dir: .
+helm:
+  takeOwnership: true

@@ -44,10 +44,11 @@ docker compose -f compose-dockge.yaml up -d
 
 ## Production Kubernetes deployment
 
-Production ArgoCD manifests live in [`gitops/production`](gitops/production).
-See the [GitOps operator guide](gitops/README.md) for retained volume
-identities, SOPS editing, validation, and rollback. ArgoCD, cluster bootstrap,
-Traefik, and shared infrastructure remain in `spainip/infra`.
+The production workloads are deployed by Rancher Fleet from
+[`fleet/bminfo`](fleet/bminfo). The older
+[`gitops/production`](gitops/production) tree preserves the SOPS and storage
+handoff definitions; do not apply it as a second controller. Traefik,
+cluster bootstrap, and shared storage remain in `spainip/infra`.
 
 ## Run locally
 

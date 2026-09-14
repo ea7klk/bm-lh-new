@@ -12,12 +12,11 @@ does not upgrade images, change configuration, run migrations, or move data.
 | `production/apps/web` | Django Deployment, environment Secret, Service and IngressRoute |
 | `production/storage` | BMInfo Namespace, two retained PV/PVC pairs and encrypted registry Secret |
 
-Cluster bootstrap, ArgoCD, Traefik, and other applications remain in
-`spainip/infra`. ArgoCD manages this repository as the `bminfo` Application,
-using the paths under `gitops/production/apps` and `gitops/production/storage`.
-The ArgoCD SOPS config-management plugin decrypts encrypted files at render
-time using the cluster's private age key; plaintext secrets are never stored
-in Git.
+The live production workloads are now managed by Rancher Fleet from
+[`fleet/bminfo`](../fleet/bminfo). The files under `gitops/production` are
+preserved as the SOPS and storage handoff record and must not be applied by a
+second controller. Fleet uses the existing cluster Secrets and retained
+storage objects; plaintext secrets are never stored in Git.
 
 ## Persistent data
 
@@ -39,14 +38,14 @@ them alongside this deployment.
 ## Secrets and changes
 
 SOPS ciphertext and recipient metadata are preserved without decrypting or
-re-encrypting them. The existing cluster age key is copied to the `argocd`
-namespace for the ArgoCD SOPS config-management plugin. Use the root
-`.sops.yaml` rules when editing encrypted files; do not edit their plaintext
-fields without SOPS, because the MAC covers them.
+re-encrypting them. Use the root `.sops.yaml` rules when editing encrypted
+files; do not edit their plaintext fields without SOPS, because the MAC covers
+them.
 Never commit the age private key, GitHub tokens, or decrypted Secrets.
 
-The public repository is fetched over HTTPS without a GitHub credential.
-ArgoCD follows the `main` branch for future GitOps changes.
+Fleet fetches the `main` branch over HTTPS using the cluster's private GitHub
+credential. The workload bundle intentionally references existing Secret
+names rather than storing their values in this repository.
 
 Validate the manifests before promotion:
 
@@ -56,9 +55,9 @@ for path in storage apps/postgres apps/pgadmin apps/web; do
 done
 ```
 
-## ArgoCD verification
+## Fleet verification
 
-1. Verify the `bminfo` ArgoCD Application is `Synced` and `Healthy`.
+1. Verify the `bminfo` Fleet GitRepo and bundle are `Ready`.
 2. Compare the existing Deployment specs, Secret hashes, PVC/PV bindings and
    pod restart counts after adoption.
 3. Check `/health/`, `/status/`, and pgAdmin's login route over HTTPS.
@@ -66,7 +65,7 @@ done
 
 ## Rollback
 
-Suspend or delete the `bminfo` ArgoCD Application before restoring any
-application resources manually. Keep the namespace, Secrets, PVs and PVCs;
-their retained identities are the rollback boundary. No database restore is
-part of a GitOps-only rollback.
+Pause or remove the `bminfo` Fleet GitRepo before restoring any application
+resources manually. Keep the namespace, Secrets, PVs and PVCs; their retained
+identities are the rollback boundary. No database restore is part of a
+GitOps-only rollback.
