@@ -45,7 +45,10 @@ docker compose -f compose-dockge.yaml up -d
 ## Production Kubernetes deployment
 
 The production workloads are deployed by Rancher Fleet from
-[`fleet/bminfo`](fleet/bminfo). The older
+[`fleet/bminfo`](fleet/bminfo), following `main`. Its GitRepo is
+`ea7klk/bminfo` in the `ea7klk` Fleet workspace, registered centrally in
+`spainip/infra/fleet/bminfo-gitrepo.yaml`. The application namespace remains
+`bminfo`; its dedicated PVs and PVCs are owned by this bundle. The older
 [`gitops/production`](gitops/production) tree preserves the SOPS and storage
 handoff definitions; do not apply it as a second controller. Traefik,
 cluster bootstrap, and shared storage remain in `spainip/infra`.

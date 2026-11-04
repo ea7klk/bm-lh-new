@@ -57,7 +57,9 @@ done
 
 ## Fleet verification
 
-1. Verify the `bminfo` Fleet GitRepo and bundle are `Ready`.
+1. Verify the `ea7klk/bminfo` Fleet GitRepo and its bundle are `Ready`.
+   The registration is owned by `spainip/infra/fleet/bminfo-gitrepo.yaml`;
+   keep it outside the workload bundle to avoid recursive registration.
 2. Compare the existing Deployment specs, Secret hashes, PVC/PV bindings and
    pod restart counts after adoption.
 3. Check `/health/`, `/status/`, and pgAdmin's login route over HTTPS.
