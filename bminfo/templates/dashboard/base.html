@@ -69,21 +69,23 @@
     }
   </style>
   {{ labels.metadata|json_script:"metadataTranslations" }}
+  {{ labels.home|json_script:"homeTranslations" }}
+  {{ labels.common|json_script:"commonTranslations" }}
 </head>
 <body>
 <main class="shell">
   <header class="panel hero">
     <h1>🔊 BrandMeister Lastheard</h1>
-    <p>Live DMR activity, talkgroup statistics and talk time</p>
+    <p>{{ labels.home.subtitle }}</p>
     <nav class="nav">
       <a href="/">{{ labels.common.dashboard|default:'Dashboard' }}</a>
       <a href="/about/">{{ labels.about.title|default:'About' }}</a>
-      {% if user.is_authenticated %}<a href="/user/live-qsos/">{{ labels.live.title|default:'Live QSOs' }}</a><a href="/reports/">{{ labels.home.reports|default:'Reports' }}</a>{% if user.is_staff %}<a href="/administration/">{{ labels.home.admin|default:'Admin' }}</a>{% endif %}<a href="/profile/">{{ user.callsign }}</a><form method="post" action="/logout/" style="display:inline">{% csrf_token %}<button class="button" type="submit">{{ labels.user.logout|default:'Log out' }}</button></form>{% else %}<a href="/login/">{{ labels.home.login|default:'Log in' }}</a><a href="/register/">{{ labels.user.register|default:'Register' }}</a>{% endif %}<label class="language-picker" for="languageSelector">{{ labels.common.language|default:'Language' }}<select id="languageSelector"><option value="en"{% if app_locale == 'en' %} selected{% endif %}>🇬🇧 English</option><option value="es"{% if app_locale == 'es' %} selected{% endif %}>🇪🇸 Español</option><option value="de"{% if app_locale == 'de' %} selected{% endif %}>🇩🇪 Deutsch</option><option value="fr"{% if app_locale == 'fr' %} selected{% endif %}>🇫🇷 Français</option></select></label>
+      {% if user.is_authenticated %}<a href="/user/live-qsos/">{{ labels.home.liveQsos }}</a><a href="/reports/">{{ labels.home.reports|default:'Reports' }}</a>{% if user.is_staff %}<a href="/administration/">{{ labels.home.admin|default:'Admin' }}</a>{% endif %}<a href="/profile/">{{ user.callsign }}</a><form method="post" action="/logout/" style="display:inline">{% csrf_token %}<button class="button" type="submit">{{ labels.user.logout|default:'Log out' }}</button></form>{% else %}<a href="/login/">{{ labels.home.login|default:'Log in' }}</a><a href="/register/">{{ labels.user.register|default:'Register' }}</a>{% endif %}<label class="language-picker" for="languageSelector">{{ labels.common.language|default:'Language' }}<select id="languageSelector"><option value="en"{% if app_locale == 'en' %} selected{% endif %}>🇬🇧 English</option><option value="es"{% if app_locale == 'es' %} selected{% endif %}>🇪🇸 Español</option><option value="de"{% if app_locale == 'de' %} selected{% endif %}>🇩🇪 Deutsch</option><option value="fr"{% if app_locale == 'fr' %} selected{% endif %}>🇫🇷 Français</option></select></label>
     </nav>
   </header>
   {% if messages %}{% for message in messages %}<div class="message">{{ message }}</div>{% endfor %}{% endif %}
   {% block content %}{% endblock %}
-  <footer class="footer" id="queryFooter">Records retrieved: {{ records_retrieved|default:'—' }}, query took {{ query_seconds|default:'—' }} seconds</footer>
+  <footer class="footer" id="queryFooter">{{ labels.common.recordsRetrievedLabel }}: {{ records_retrieved|default:'—' }} · {{ labels.common.queryTimeLabel }}: {{ query_seconds|default:'—' }} s</footer>
 </main>
 {% include "dashboard/donation_reminder.html" %}
 <div id="cookieConsent" class="cookie-consent" hidden><h3>{{ labels.cookies.title|default:'Privacy and cookies' }}</h3><p>{{ labels.cookies.description|default:'Only necessary cookies are used by default.' }}</p><div class="cookie-actions"><button class="button" onclick="cookieChoice(true)">{{ labels.cookies.acceptAnalytics|default:'Accept analytics' }}</button><button class="button secondary" onclick="cookieChoice(false)">{{ labels.cookies.continue|default:'Continue with necessary cookies' }}</button></div></div>

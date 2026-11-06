@@ -47,3 +47,9 @@ def locale_from_request(request) -> str:
     if not requested:
         requested = request.headers.get("Accept-Language", "en").split(",", 1)[0]
     return normalize_locale(requested)
+
+
+def time_range_choices(locale, values):
+    labels = catalog(locale)["home"]
+    calendar_ranges = {"today", "yesterday", "lastWeek", "lastMonth"}
+    return [(value, labels[value if value in calendar_ranges else f"last{value}"]) for value in values]

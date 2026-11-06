@@ -5,8 +5,10 @@ from datetime import timedelta
 
 from django.test import TestCase
 from django.utils import timezone
+from django.utils.html import escape
 
 from dashboard.models import QSO, Talkgroup, User
+from dashboard.i18n import SUPPORTED_LOCALES, catalog
 
 
 class ReportViewDatabaseTests(TestCase):
@@ -62,6 +64,19 @@ class ReportViewDatabaseTests(TestCase):
         rows = list(csv.reader(io.StringIO(response.content.decode())))
         self.assertEqual(rows[0][0], "Talkgroup")
         self.assertIn("EA7KLK", response.content.decode())
+
+    def test_report_page_translates_filters_titles_legends_and_weekdays(self):
+        for locale in SUPPORTED_LOCALES:
+            with self.subTest(locale=locale):
+                labels = catalog(locale)
+                response = self.client.get("/reports/", {"lang": locale, "timeRange": "24h"})
+                self.assertEqual(response.status_code, 200)
+                html = response.content.decode()
+                for key in ("dailyActivity", "hourlyActivity", "weekdayActivity", "concurrentActivity", "topCallsigns"):
+                    self.assertIn(f'<h2>{escape(labels["reports"][key])}</h2>', html)
+                for value in (labels["home"]["subtitle"], labels["home"]["timeRange"], labels["home"]["allTalkgroups"], labels["reports"]["activeTalkgroups"], labels["reports"]["activeSources"], labels["reports"]["monday"], labels["home"]["last1M"], labels["reports"]["apply"]):
+                    self.assertIn(escape(value), html)
+                self.assertIn(f'name="lang" value="{locale}"', html)
 
     def test_excel_and_pdf_exports_return_documents(self):
         excel = self.client.get("/reports/export.xlsx?timeRange=24h")

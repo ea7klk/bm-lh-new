@@ -13,7 +13,7 @@ from django.shortcuts import render
 from django.utils import timezone
 
 from .core_views import filtered_qsos
-from .i18n import catalog, locale_from_request
+from .i18n import catalog, locale_from_request, time_range_choices
 from .models import QSO
 from .utils import histogram_bucket_seconds, histogram_label, range_bounds, qso_duration
 
@@ -158,7 +158,12 @@ def _report_rows(request):
 @login_required
 def reports(request):
     data = _report_rows(request)
-    ranges = [("24h", "Last 24 hours"), ("today", "Today"), ("yesterday", "Yesterday"), ("1w", "Last 7 days"), ("lastWeek", "Last week"), ("2w", "Last 14 days"), ("1M", "Last 30 days"), ("lastMonth", "Last month"), ("2M", "Last 2 months"), ("3M", "Last 3 months")]
+    locale = locale_from_request(request)
+    ranges = time_range_choices(locale, ("24h", "today", "yesterday", "1w", "lastWeek", "2w", "1M", "lastMonth", "2M", "3M"))
+    labels = catalog(locale)["reports"]
+    weekdays = [labels[key] for key in ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")]
+    for row in data["weekday_activity"]:
+        row["label"] = weekdays[row["weekday"] - 1]
     return render(request, "dashboard/reports.html", {"report": data, "ranges": ranges, "time_range": request.GET.get("timeRange", "1M"), "selected_talkgroups": request.GET.getlist("talkgroup"), "records_retrieved": data["summary"]["qso_count"], "query_seconds": "—"})
 
 
