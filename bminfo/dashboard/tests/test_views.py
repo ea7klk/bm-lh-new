@@ -34,6 +34,7 @@ class PublicViewTests(SimpleTestCase):
                 request.user = AnonymousUser()
                 html = dashboard(request).content.decode()
                 self.assertIn(catalog(locale)["home"]["registrationNotice"], html)
+                self.assertIn(f'<a href="/register/?lang={locale}">{catalog(locale)["home"]["registeredUsers"]}</a>', html)
                 notice = html.index('id="registrationNotice"')
                 self.assertLess(html.index('</header>'), notice)
                 self.assertLess(notice, html.index('id="timeRange"'))
