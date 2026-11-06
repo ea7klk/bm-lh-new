@@ -2,16 +2,13 @@ import hashlib
 import json
 import logging
 import os
-import signal
-import threading
-import time
 from datetime import datetime, timedelta, timezone
 
 import requests
-import socketio
 from django.db import close_old_connections, connections, transaction
 from django.utils import timezone as django_timezone
 
+from .lastheard_client import LastheardClient
 from .models import QSO, RawEvent, ServiceHeartbeat, Talkgroup
 from .qso_rules import NON_QSO_DESTINATION_IDS, raw_event_threshold_seconds
 from .talkgroups import PINNED_TALKGROUPS, classify_talkgroup, repair_talkgroups
@@ -252,23 +249,32 @@ def sync_talkgroups(url, *, force=False):
     return count
 
 
-def run_collector(stop_event):
+def run_collector(stop_event, connected_event):
     threshold = float(os.getenv("KERCHUNK_THRESHOLD_SECONDS", "3"))
     raw_threshold = raw_event_threshold_seconds()
     exclude_talkgroup = int(os.getenv("EXCLUDE_LOCAL_TALKGROUP", "9"))
     removed, _ = QSO.objects.filter(talkgroup_id__in=NON_QSO_DESTINATION_IDS).delete()
     if removed:
         logger.info("removed %d non-QSO service destinations from qsos", removed)
-    socket_client = socketio.Client(reconnection=True, reconnection_delay=5, reconnection_delay_max=60)
+    # Use one retry owner and interruptible waits so SIGTERM can close an
+    # active connection as well as stop connection retries.
+    socket_client = LastheardClient(
+        reconnection=False,
+        handle_sigint=False,
+        engineio_logger=logging.getLogger("engineio.client"),
+    )
 
     @socket_client.event
     def connect():
         logger.info("connected to BrandMeister Lastheard")
         socket_client.emit("join", os.getenv("BM_JOIN", "everything"))
+        connected_event.set()
 
     @socket_client.event
-    def disconnect():
-        logger.warning("disconnected from BrandMeister Lastheard")
+    def disconnect(reason=None):
+        connected_event.clear()
+        log = logger.info if stop_event.is_set() else logger.warning
+        log("disconnected from BrandMeister Lastheard: %s", reason or "unknown reason")
 
     @socket_client.on("mqtt")
     def on_mqtt(data):
@@ -289,6 +295,7 @@ def run_collector(stop_event):
             # thread until CONN_MAX_AGE expires.
             connections.close_all()
 
+    retry_delay = 5
     while not stop_event.is_set():
         try:
             socket_client.connect(
@@ -296,24 +303,31 @@ def run_collector(stop_event):
                 socketio_path=os.getenv("BM_SOCKETIO_PATH", "/lh/socket.io"),
                 transports=["websocket"],
             )
-            socket_client.wait()
+            retry_delay = 5
+            while socket_client.connected and not stop_event.wait(1):
+                pass
         except Exception:
             if not stop_event.is_set():
                 logger.exception("collector connection failed; retrying")
-                stop_event.wait(10)
         finally:
-            if socket_client.connected:
-                socket_client.disconnect()
+            connected_event.clear()
+            socket_client.shutdown()
+        if not stop_event.is_set():
+            stop_event.wait(retry_delay)
+            retry_delay = min(retry_delay * 2, 60)
 
 
-def heartbeat_loop(stop_event):
+def heartbeat_loop(stop_event, connected_event):
     interval = max(int(os.getenv("COLLECTOR_HEARTBEAT_SECONDS", "30")), 5)
     while not stop_event.is_set():
         try:
             close_old_connections()
-            ServiceHeartbeat.objects.update_or_create(
-                service_name="collector", defaults={"last_seen_at": django_timezone.now()}
-            )
+            # A running heartbeat thread alone does not prove that collection
+            # works. Let /status/ degrade during a sustained disconnection.
+            if connected_event.is_set():
+                ServiceHeartbeat.objects.update_or_create(
+                    service_name="collector", defaults={"last_seen_at": django_timezone.now()}
+                )
         except Exception:
             logger.exception("collector heartbeat update failed")
         finally:

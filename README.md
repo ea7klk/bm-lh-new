@@ -78,6 +78,15 @@ Run the collector separately during local development:
 python bminfo/manage.py collect_brandmeister
 ```
 
+The collector rejoins the configured room after each reconnect, retries failed
+connections with a 5–60 second backoff, and disconnects on shutdown. Its send
+queue waits for the full server heartbeat window, avoiding premature Engine.IO
+`packet queue is empty` aborts when a server ping is delayed. Genuine transport
+failures are still logged and retried; events sent while disconnected may be
+missed. The collector heartbeat advances only while connected, so
+`/status/` becomes degraded after a sustained disconnection (90 seconds with
+the default heartbeat interval). `/health/` remains the web liveness check.
+
 ## Donation reminders
 
 Public application pages include a dismissible reminder linking to

@@ -14,6 +14,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
         stop_event = threading.Event()
+        connected_event = threading.Event()
 
         def stop(_signum, _frame):
             self.stdout.write("collector shutdown requested")
@@ -21,14 +22,16 @@ class Command(BaseCommand):
 
         signal.signal(signal.SIGTERM, stop)
         signal.signal(signal.SIGINT, stop)
-        heartbeat = threading.Thread(target=heartbeat_loop, args=(stop_event,), daemon=True)
+        heartbeat = threading.Thread(target=heartbeat_loop, args=(stop_event, connected_event), daemon=True)
         talkgroups = threading.Thread(target=talkgroup_loop, args=(stop_event,), daemon=True)
         cleanup = threading.Thread(target=nightly_cleanup, args=(stop_event,), daemon=True)
         heartbeat.start()
         talkgroups.start()
         cleanup.start()
-        run_collector(stop_event)
-        stop_event.set()
-        heartbeat.join(timeout=3)
-        talkgroups.join(timeout=3)
-        cleanup.join(timeout=3)
+        try:
+            run_collector(stop_event, connected_event)
+        finally:
+            stop_event.set()
+            heartbeat.join(timeout=3)
+            talkgroups.join(timeout=3)
+            cleanup.join(timeout=3)
