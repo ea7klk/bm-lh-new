@@ -1,5 +1,7 @@
 from django.test import RequestFactory, SimpleTestCase
 from django.template.loader import render_to_string
+from django.contrib.auth.models import AnonymousUser
+from django.utils.html import escape
 
 from dashboard.i18n import SUPPORTED_LOCALES, catalog, catalogs, locale_from_request, normalize_locale, translate
 
@@ -36,6 +38,21 @@ class TranslationTests(SimpleTestCase):
         self.assertEqual(normalize_locale("DE"), "de")
         self.assertEqual(normalize_locale("pt-BR"), "en")
         self.assertEqual(normalize_locale(None), "en")
+
+    def test_dashboard_translates_subtitle_filters_charts_and_tables(self):
+        for locale in SUPPORTED_LOCALES:
+            with self.subTest(locale=locale):
+                request = RequestFactory().get("/", {"lang": locale})
+                request.user = AnonymousUser()
+                labels = catalog(locale)
+                html = render_to_string("dashboard/index.html", request=request)
+                self.assertIn(f'<p>{escape(labels["home"]["subtitle"])}</p>', html)
+                self.assertIn(f'<label for="timeRange">{escape(labels["home"]["timeRange"])}</label>', html)
+                for key in ("qsoActivityTitle", "talkTimeTitle", "callsignQsoTitle", "callsignTalkTimeTitle", "talkgroupActivityTitle"):
+                    self.assertIn(f'<h2>{escape(labels["home"][key])}</h2>', html)
+                self.assertIn(f'<h2>{escape(labels["reports"]["dailyActivity"])}</h2>', html)
+                self.assertIn(f'<th>{escape(labels["home"]["lastHeard"])}</th>', html)
+                self.assertIn(f'>{escape(labels["home"]["last24h"])}</option>', html)
 
     def test_translate_formats_values_and_falls_back_to_english(self):
         self.assertEqual(translate("en", "emailVerification.greeting", callsign="EA7KLK"), "Hello EA7KLK,")

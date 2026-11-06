@@ -11,6 +11,8 @@
       "recurring": "Recurring donation \u00b7 hide for one year"
     },
     "common": {
+      "recordsRetrievedLabel": "Records retrieved",
+      "queryTimeLabel": "Query time",
       "dashboard": "\u2190 Dashboard",
       "accounts": "BrandMeister accounts",
       "language": "Language",
@@ -97,6 +99,7 @@
     "home": {
     },
     "home": {
+      "liveQsos": "Live QSOs",
       "registrationNotice": "Registered users have access to enhanced functions like reports, live QSOs and additional query options",
       "title": "BrandMeister Lastheard",
       "subtitle": "Live DMR activity, talkgroup statistics and talk time",
@@ -515,6 +518,11 @@
       }
     },
     "reports": {
+      "apply": "Apply",
+      "topCallsigns": "Top callsigns",
+      "trafficIncreasing": "Traffic increasing",
+      "trafficDecreasing": "Traffic decreasing",
+      "trafficUnchanged": "Traffic unchanged",
       "title": "Advanced reports",
       "forUser": "Report for",
       "timeRange": "Time range",
@@ -574,6 +582,8 @@
       "recurring": "Donaci\u00f3n recurrente \u00b7 ocultar durante un a\u00f1o"
     },
     "common": {
+      "recordsRetrievedLabel": "Registros obtenidos",
+      "queryTimeLabel": "Tiempo de consulta",
       "dashboard": "\u2190 Panel",
       "accounts": "Cuentas BrandMeister",
       "language": "Idioma",
@@ -660,6 +670,7 @@
     "home": {
     },
     "home": {
+      "liveQsos": "QSOs en directo",
       "registrationNotice": "Los usuarios registrados tienen acceso a funciones mejoradas, como informes, QSOs en directo y opciones de consulta adicionales",
       "title": "BrandMeister Lastheard",
       "subtitle": "Actividad DMR en directo, estad\u00edsticas de grupos y tiempo de transmisi\u00f3n",
@@ -1078,6 +1089,11 @@
       }
     },
     "reports": {
+      "apply": "Aplicar",
+      "topCallsigns": "Indicativos destacados",
+      "trafficIncreasing": "Tr\u00e1fico en aumento",
+      "trafficDecreasing": "Tr\u00e1fico en descenso",
+      "trafficUnchanged": "Tr\u00e1fico sin cambios",
       "title": "Informes avanzados",
       "forUser": "Informe para",
       "timeRange": "Rango de tiempo",
@@ -1137,6 +1153,8 @@
       "recurring": "Regelm\u00e4\u00dfige Spende \u00b7 ein Jahr ausblenden"
     },
     "common": {
+      "recordsRetrievedLabel": "Abgerufene Datens\u00e4tze",
+      "queryTimeLabel": "Abfragezeit",
       "dashboard": "\u2190 Dashboard",
       "accounts": "BrandMeister-Konten",
       "language": "Sprache",
@@ -1223,6 +1241,7 @@
     "home": {
     },
     "home": {
+      "liveQsos": "Live-QSOs",
       "registrationNotice": "Registrierte Benutzer haben Zugriff auf erweiterte Funktionen wie Berichte, Live-QSOs und zus\u00e4tzliche Abfrageoptionen",
       "title": "BrandMeister Lastheard",
       "subtitle": "DMR-Live-Aktivit\u00e4t, Talkgroup-Statistiken und Sprechzeit",
@@ -1641,6 +1660,11 @@
       }
     },
     "reports": {
+      "apply": "Anwenden",
+      "topCallsigns": "F\u00fchrende Rufzeichen",
+      "trafficIncreasing": "Steigender Funkverkehr",
+      "trafficDecreasing": "Sinkender Funkverkehr",
+      "trafficUnchanged": "Unver\u00e4nderter Funkverkehr",
       "title": "Erweiterte Berichte",
       "forUser": "Bericht f\u00fcr",
       "timeRange": "Zeitraum",
@@ -1700,6 +1724,8 @@
       "recurring": "Don r\u00e9current \u00b7 masquer pendant un an"
     },
     "common": {
+      "recordsRetrievedLabel": "Enregistrements r\u00e9cup\u00e9r\u00e9s",
+      "queryTimeLabel": "Dur\u00e9e de la requ\u00eate",
       "dashboard": "\u2190 Tableau de bord",
       "accounts": "Comptes BrandMeister",
       "language": "Langue",
@@ -1786,6 +1812,7 @@
     "home": {
     },
     "home": {
+      "liveQsos": "QSOs en direct",
       "registrationNotice": "Les utilisateurs inscrits ont acc\u00e8s \u00e0 des fonctionnalit\u00e9s avanc\u00e9es comme les rapports, les QSOs en direct et des options de recherche suppl\u00e9mentaires",
       "title": "BrandMeister Lastheard",
       "subtitle": "Activit\u00e9 DMR en direct, statistiques des groupes et temps de parole",
@@ -2204,6 +2231,11 @@
       }
     },
     "reports": {
+      "apply": "Appliquer",
+      "topCallsigns": "Principaux indicatifs",
+      "trafficIncreasing": "Trafic en hausse",
+      "trafficDecreasing": "Trafic en baisse",
+      "trafficUnchanged": "Trafic stable",
       "title": "Rapports avanc\u00e9s",
       "forUser": "Rapport pour",
       "timeRange": "Plage horaire",
