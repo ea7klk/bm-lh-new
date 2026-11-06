@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import logging
 from queue import Empty, Queue
 import threading
 from unittest import mock
@@ -108,6 +109,19 @@ class CollectorConnectionTests(SimpleTestCase):
         handlers = {}
         client.event.side_effect = lambda handler: handlers.setdefault(handler.__name__, handler)
         return client, handlers
+
+    def test_engineio_logs_transport_warnings_without_packet_payloads(self):
+        client, _ = self.fake_client()
+        stop_event = threading.Event()
+        stop_event.set()
+        with mock.patch.object(collector, "LastheardClient", return_value=client) as factory:
+            with mock.patch.object(collector.QSO, "objects") as qsos:
+                qsos.filter.return_value.delete.return_value = (0, {})
+                collector.run_collector(stop_event, threading.Event())
+        engineio_logger = factory.call_args.kwargs["engineio_logger"]
+        self.assertFalse(engineio_logger.isEnabledFor(logging.INFO))
+        self.assertTrue(engineio_logger.isEnabledFor(logging.WARNING))
+        self.assertTrue(engineio_logger.isEnabledFor(logging.ERROR))
 
     def test_reconnect_rejoins_room_and_shutdown_stops_active_connection(self):
         client, handlers = self.fake_client()

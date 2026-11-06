@@ -258,10 +258,12 @@ def run_collector(stop_event, connected_event):
         logger.info("removed %d non-QSO service destinations from qsos", removed)
     # Use one retry owner and interruptible waits so SIGTERM can close an
     # active connection as well as stop connection retries.
+    engineio_logger = logging.getLogger("engineio.client")
+    engineio_logger.setLevel(logging.WARNING)
     socket_client = LastheardClient(
         reconnection=False,
         handle_sigint=False,
-        engineio_logger=logging.getLogger("engineio.client"),
+        engineio_logger=engineio_logger,
     )
 
     @socket_client.event
