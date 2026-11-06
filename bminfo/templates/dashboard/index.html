@@ -2,7 +2,13 @@
 {% block title %}BrandMeister Lastheard{% endblock %}
 {% block content %}
 {% if not user.is_authenticated %}
-<aside id="registrationNotice" class="panel section">{{ labels.home.registrationNotice }}</aside>
+<style>
+  .registration-notice{text-align:center;font-size:clamp(1.125rem,1.6vw,1.35rem);font-weight:750;line-height:1.6;color:#9d174d;border:2px solid #db2777}
+  .registration-notice a{color:inherit;font-weight:800;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:.2em}
+  .registration-notice a:hover,.registration-notice a:focus-visible{color:#701a75}
+  .registration-notice a:focus-visible{outline:2px solid #701a75;outline-offset:4px;border-radius:2px}
+</style>
+<aside id="registrationNotice" class="panel section registration-notice"><a href="{% url 'register' %}?lang={{ app_locale }}">{{ labels.home.registeredUsers }}</a> {{ labels.home.registrationNotice }}</aside>
 {% endif %}
 <section class="panel controls">
   <div class="control"><label for="timeRange">{{ labels.home.timeRange }}</label><select id="timeRange"><option value="5m">{{ labels.home.last5m }}</option><option value="15m">{{ labels.home.last15m }}</option><option value="30m">{{ labels.home.last30m }}</option><option value="1h">{{ labels.home.last1h }}</option><option value="2h">{{ labels.home.last2h }}</option><option value="6h">{{ labels.home.last6h }}</option><option value="12h">{{ labels.home.last12h }}</option><option value="24h" selected>{{ labels.home.last24h }}</option>{% if user.is_authenticated %}<option value="today">{{ labels.home.today }}</option><option value="yesterday">{{ labels.home.yesterday }}</option><option value="2d">{{ labels.home.last2d }}</option><option value="5d">{{ labels.home.last5d }}</option><option value="1w">{{ labels.home.last1w }}</option><option value="lastWeek">{{ labels.home.lastWeek }}</option><option value="2w">{{ labels.home.last2w }}</option><option value="1M">{{ labels.home.last1M }}</option><option value="lastMonth">{{ labels.home.lastMonth }}</option><option value="2M">{{ labels.home.last2M }}</option><option value="3M">{{ labels.home.last3M }}</option>{% endif %}</select></div>
