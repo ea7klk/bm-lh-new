@@ -292,9 +292,6 @@
   "apiVersion": "apps/v1",
   "kind": "Deployment",
   "metadata": {
-    "annotations": {
-      "deployment.kubernetes.io/revision": "1"
-    },
     "labels": {
       "kustomize.toolkit.fluxcd.io/name": "bminfo-web",
       "kustomize.toolkit.fluxcd.io/namespace": "flux-system"
