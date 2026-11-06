@@ -78,6 +78,35 @@ Run the collector separately during local development:
 python bminfo/manage.py collect_brandmeister
 ```
 
+The collector rejoins the configured room after each reconnect, retries failed
+connections with a 5–60 second backoff, and disconnects on shutdown. Its send
+queue waits for the full server heartbeat window, avoiding premature Engine.IO
+`packet queue is empty` aborts when a server ping is delayed. Genuine transport
+failures are still logged and retried; events sent while disconnected may be
+missed. The collector heartbeat advances only while connected, so
+`/status/` becomes degraded after a sustained disconnection (90 seconds with
+the default heartbeat interval). `/health/` remains the web liveness check.
+
+## Donation reminders
+
+Public application pages include a dismissible reminder linking to
+<https://ko-fi.com/ea7klk>, translated into the selected English, Spanish,
+German, or French locale. The initial reminder appears after a random 1–3
+minutes of visible browsing, then 10–20 minutes after dismissal. A shared
+browser-storage deadline survives navigation; a visit after 30 minutes away
+starts with the initial delay. Web Locks coordinate dialogs across tabs where
+supported. Browser background throttling can delay reminders.
+
+The “I've already donated” choices are self-declared: a one-time donation
+suppresses reminders for 30 days and a recurring donation for 365 days. The
+`bminfo_donation_until` cookie stores only the expiry, uses `SameSite=Lax`, and
+is `Secure` on HTTPS. Suppression applies to this browser and requires cookies;
+clearing them or switching browsers removes it. No donation verification or
+payment information is stored. Ko-fi opens only when the visitor follows the
+support link; the reminder itself loads no third-party scripts.
+
+Run reminder behavior tests with `node --test tests/donation_reminder.test.cjs`.
+
 ## Configuration
 
 `.env.example` documents the complete Compose configuration. Important groups

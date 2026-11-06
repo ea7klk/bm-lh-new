@@ -1,0 +1,27 @@
+{% load static %}
+<style>
+  .donation-reminder{width:min(480px,calc(100% - 32px));max-height:85vh;overflow:auto;border:0;border-radius:16px;padding:26px;color:var(--ink);box-shadow:0 18px 55px #1e153a55}
+  .donation-reminder::backdrop{background:#1e153a66}
+  .donation-reminder h2{margin:0 0 12px;font-size:23px}
+  .donation-reminder p{line-height:1.5;color:var(--muted)}
+  .donation-reminder .donation-actions{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}
+  .donation-reminder summary{cursor:pointer;font-weight:700;color:#4f46a5}
+  .donation-reminder .donation-options{display:flex;flex-direction:column;align-items:stretch;gap:10px;margin-top:14px}
+</style>
+<dialog id="donationReminder" class="donation-reminder" aria-labelledby="donationTitle" aria-describedby="donationDescription">
+  <h2 id="donationTitle">{{ labels.donation.title }}</h2>
+  <p id="donationDescription">{{ labels.donation.description }}</p>
+  <div class="donation-actions">
+    <a class="button" href="https://ko-fi.com/ea7klk" target="_blank" rel="noopener noreferrer">{{ labels.donation.support }}</a>
+    <button class="button secondary" type="button" data-donation-dismiss autofocus>{{ labels.donation.later }}</button>
+  </div>
+  <details>
+    <summary>{{ labels.donation.alreadyDonated }}</summary>
+    <p>{{ labels.donation.remember }}</p>
+    <div class="donation-options">
+      <button class="button secondary" type="button" data-donation-days="30">{{ labels.donation.oneTime }}</button>
+      <button class="button secondary" type="button" data-donation-days="365">{{ labels.donation.recurring }}</button>
+    </div>
+  </details>
+</dialog>
+<script src="{% static 'dashboard/donation_reminder.js' %}" defer></script>

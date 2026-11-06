@@ -43,6 +43,9 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --upgrade pip && python -m pip install -r bminfo/requirements.txt
 
+      - name: Test donation reminder behavior
+        run: node --test tests/donation_reminder.test.cjs
+
       - name: Check Django application
         env:
           APP_SECRET_KEY: ci-only-secret

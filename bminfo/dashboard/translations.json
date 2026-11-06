@@ -1,5 +1,15 @@
 {
   "en": {
+    "donation": {
+      "title": "Support BrandMeister Lastheard",
+      "description": "Enjoying the live DMR activity and statistics? A coffee helps EA7KLK keep this project running. Thank you for your support!",
+      "support": "Support EA7KLK on Ko-fi",
+      "later": "Maybe later",
+      "alreadyDonated": "I\u2019ve already donated",
+      "remember": "Thank you! Choose how long to hide reminders in this browser.",
+      "oneTime": "One-time donation \u00b7 hide for 30 days",
+      "recurring": "Recurring donation \u00b7 hide for one year"
+    },
     "common": {
       "dashboard": "\u2190 Dashboard",
       "accounts": "BrandMeister accounts",
@@ -552,6 +562,16 @@
     }
   },
   "es": {
+    "donation": {
+      "title": "Apoya BrandMeister Lastheard",
+      "description": "\u00bfTe gustan la actividad DMR en directo y las estad\u00edsticas? Un caf\u00e9 ayuda a EA7KLK a mantener este proyecto. \u00a1Gracias por tu apoyo!",
+      "support": "Apoya a EA7KLK en Ko-fi",
+      "later": "Quiz\u00e1s m\u00e1s tarde",
+      "alreadyDonated": "Ya he donado",
+      "remember": "\u00a1Gracias! Elige cu\u00e1nto tiempo quieres ocultar los recordatorios en este navegador.",
+      "oneTime": "Donaci\u00f3n puntual \u00b7 ocultar durante 30 d\u00edas",
+      "recurring": "Donaci\u00f3n recurrente \u00b7 ocultar durante un a\u00f1o"
+    },
     "common": {
       "dashboard": "\u2190 Panel",
       "accounts": "Cuentas BrandMeister",
@@ -1104,6 +1124,16 @@
     }
   },
   "de": {
+    "donation": {
+      "title": "Unterst\u00fctze BrandMeister Lastheard",
+      "description": "Dir gefallen die DMR-Liveaktivit\u00e4t und die Statistiken? Ein Kaffee hilft EA7KLK, dieses Projekt am Laufen zu halten. Vielen Dank f\u00fcr deine Unterst\u00fctzung!",
+      "support": "EA7KLK auf Ko-fi unterst\u00fctzen",
+      "later": "Vielleicht sp\u00e4ter",
+      "alreadyDonated": "Ich habe bereits gespendet",
+      "remember": "Vielen Dank! W\u00e4hle, wie lange die Erinnerungen in diesem Browser ausgeblendet werden sollen.",
+      "oneTime": "Einmalige Spende \u00b7 30 Tage ausblenden",
+      "recurring": "Regelm\u00e4\u00dfige Spende \u00b7 ein Jahr ausblenden"
+    },
     "common": {
       "dashboard": "\u2190 Dashboard",
       "accounts": "BrandMeister-Konten",
@@ -1656,6 +1686,16 @@
     }
   },
   "fr": {
+    "donation": {
+      "title": "Soutenez BrandMeister Lastheard",
+      "description": "Vous appr\u00e9ciez l\u2019activit\u00e9 DMR en direct et les statistiques ? Un caf\u00e9 aide EA7KLK \u00e0 faire vivre ce projet. Merci pour votre soutien !",
+      "support": "Soutenir EA7KLK sur Ko-fi",
+      "later": "Peut-\u00eatre plus tard",
+      "alreadyDonated": "J\u2019ai d\u00e9j\u00e0 fait un don",
+      "remember": "Merci ! Choisissez la dur\u00e9e pendant laquelle masquer les rappels dans ce navigateur.",
+      "oneTime": "Don ponctuel \u00b7 masquer pendant 30 jours",
+      "recurring": "Don r\u00e9current \u00b7 masquer pendant un an"
+    },
     "common": {
       "dashboard": "\u2190 Tableau de bord",
       "accounts": "Comptes BrandMeister",
