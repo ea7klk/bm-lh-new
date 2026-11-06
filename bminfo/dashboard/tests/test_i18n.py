@@ -1,4 +1,5 @@
 from django.test import RequestFactory, SimpleTestCase
+from django.template.loader import render_to_string
 
 from dashboard.i18n import SUPPORTED_LOCALES, catalog, catalogs, locale_from_request, normalize_locale, translate
 
@@ -12,6 +13,23 @@ class TranslationTests(SimpleTestCase):
         self.assertEqual(set(SUPPORTED_LOCALES), set(all_catalogs))
         for locale in SUPPORTED_LOCALES:
             self.assertIn("common", catalog(locale))
+
+    def test_donation_dialog_uses_the_selected_locale_on_shared_pages(self):
+        expected = {
+            "en": "Support BrandMeister Lastheard",
+            "es": "Apoya BrandMeister Lastheard",
+            "de": "Unterstütze BrandMeister Lastheard",
+            "fr": "Soutenez BrandMeister Lastheard",
+        }
+        for locale, title in expected.items():
+            with self.subTest(locale=locale):
+                request = RequestFactory().get("/", {"lang": locale})
+                html = render_to_string("dashboard/base.html", request=request)
+                self.assertIn(title, html)
+                self.assertIn('href="https://ko-fi.com/ea7klk"', html)
+                self.assertIn('data-donation-days="30"', html)
+                self.assertIn('data-donation-days="365"', html)
+                self.assertEqual(set(catalog(locale)["donation"]), set(catalog("en")["donation"]))
 
     def test_locale_normalization_handles_language_tags_and_unknown_values(self):
         self.assertEqual(normalize_locale("es-ES"), "es")
