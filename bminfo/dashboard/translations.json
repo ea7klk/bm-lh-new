@@ -97,6 +97,7 @@
     "home": {
     },
     "home": {
+      "registrationNotice": "Registered users have access to enhanced functions like reports, live QSOs and additional query options",
       "title": "BrandMeister Lastheard",
       "subtitle": "Live DMR activity, talkgroup statistics and talk time",
       "liveFeed": "live feed",
@@ -659,6 +660,7 @@
     "home": {
     },
     "home": {
+      "registrationNotice": "Los usuarios registrados tienen acceso a funciones mejoradas, como informes, QSOs en directo y opciones de consulta adicionales",
       "title": "BrandMeister Lastheard",
       "subtitle": "Actividad DMR en directo, estad\u00edsticas de grupos y tiempo de transmisi\u00f3n",
       "liveFeed": "emisi\u00f3n en directo",
@@ -1221,6 +1223,7 @@
     "home": {
     },
     "home": {
+      "registrationNotice": "Registrierte Benutzer haben Zugriff auf erweiterte Funktionen wie Berichte, Live-QSOs und zus\u00e4tzliche Abfrageoptionen",
       "title": "BrandMeister Lastheard",
       "subtitle": "DMR-Live-Aktivit\u00e4t, Talkgroup-Statistiken und Sprechzeit",
       "liveFeed": "Live-Feed",
@@ -1783,6 +1786,7 @@
     "home": {
     },
     "home": {
+      "registrationNotice": "Les utilisateurs inscrits ont acc\u00e8s \u00e0 des fonctionnalit\u00e9s avanc\u00e9es comme les rapports, les QSOs en direct et des options de recherche suppl\u00e9mentaires",
       "title": "BrandMeister Lastheard",
       "subtitle": "Activit\u00e9 DMR en direct, statistiques des groupes et temps de parole",
       "liveFeed": "flux en direct",
