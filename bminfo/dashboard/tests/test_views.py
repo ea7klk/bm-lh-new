@@ -2,6 +2,7 @@ import json
 
 from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory, SimpleTestCase
+from django.utils.html import escape
 
 from dashboard.core_views import dashboard
 from dashboard.i18n import catalog
@@ -33,7 +34,7 @@ class PublicViewTests(SimpleTestCase):
                 request = self.factory.get("/", {"lang": locale})
                 request.user = AnonymousUser()
                 html = dashboard(request).content.decode()
-                self.assertIn(catalog(locale)["home"]["registrationNotice"], html)
+                self.assertIn(escape(catalog(locale)["home"]["registrationNotice"]), html)
                 self.assertIn(f'<a href="/register/?lang={locale}">{catalog(locale)["home"]["registeredUsers"]}</a>', html)
                 notice = html.index('id="registrationNotice"')
                 self.assertLess(html.index('</header>'), notice)
@@ -43,3 +44,14 @@ class PublicViewTests(SimpleTestCase):
         request = self.factory.get("/")
         request.user = User(callsign="EA7KLK")
         self.assertNotIn('id="registrationNotice"', dashboard(request).content.decode())
+
+    def test_header_donate_link_follows_language_selector_in_every_locale(self):
+        for locale in ("en", "es", "de", "fr"):
+            with self.subTest(locale=locale):
+                request = self.factory.get("/", {"lang": locale})
+                request.user = AnonymousUser()
+                html = dashboard(request).content.decode()
+                donate = html.index('class="button donate-button"')
+                self.assertLess(html.index('id="languageSelector"'), donate)
+                self.assertIn(f'rel="noopener noreferrer">{catalog(locale)["donation"]["donate"]}</a>', html)
+                self.assertIn('href="https://ko-fi.com/ea7klk"', html[donate:])
