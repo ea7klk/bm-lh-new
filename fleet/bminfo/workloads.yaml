@@ -331,7 +331,7 @@
                 }
               }
             ],
-            "image": "ghcr.io/ea7klk/bminfo-new:v1.2.2@sha256:09c9505332e5acc036aebcc25c406baccaa14094cc492a865dd577420449d050",
+            "image": "ghcr.io/ea7klk/bminfo-new:v1.2.3@sha256:23ff9194106b9bb8797c936e3cb0994a93b9429553eeb75edd10487a75986351",
             "imagePullPolicy": "IfNotPresent",
             "name": "web",
             "ports": [
