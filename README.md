@@ -107,6 +107,32 @@ support link; the reminder itself loads no third-party scripts.
 
 Run reminder behavior tests with `node --test tests/donation_reminder.test.cjs`.
 
+## Unverified account cleanup
+
+Registration creates an inactive account and sends a verification link. Accounts
+that never confirm their email address are deleted after
+`UNVERIFIED_USER_RETENTION_DAYS` (default 5), so stale signups do not accumulate.
+
+The `purge_unverified_users` management command performs the deletion. It only
+considers inactive accounts without `email_verified_at`, skips staff and
+superuser accounts, and removes related verification, password-reset, and
+session rows through cascading deletes. Preview the matching accounts without
+writing:
+
+```bash
+docker compose exec web python manage.py purge_unverified_users --dry-run
+```
+
+Run it manually, or from a host scheduler, with an optional retention override:
+
+```bash
+docker compose exec web python manage.py purge_unverified_users --days 5
+```
+
+In the Kubernetes deployment, `fleet/bminfo/workloads.yaml` runs the command
+daily at 03:17 UTC in a CronJob that uses the web image and the `web-env`
+secret. The CronJob forbids concurrent runs and keeps a short job history.
+
 ## Configuration
 
 `.env.example` documents the complete Compose configuration. Important groups
@@ -118,6 +144,8 @@ are:
   administrator settings.
 - `BM_*`, `TALKGROUPS_*`, and QSO thresholds for BrandMeister ingestion.
 - `SMTP_*` for registration, verification, and password-reset email.
+- `UNVERIFIED_USER_RETENTION_DAYS` for deleting accounts that never verified
+  their email (default 5).
 - `MATOMO_*` for optional consent-gated analytics.
 - `TRAEFIK_*` for the Dockge deployment.
 
