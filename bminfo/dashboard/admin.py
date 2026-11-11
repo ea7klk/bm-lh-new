@@ -17,7 +17,7 @@ from .models import (
 @admin.register(User)
 class UserAdmin(DjangoUserAdmin):
     ordering = ("callsign",)
-    list_display = ("callsign", "name", "email", "is_active", "is_staff", "last_login_at")
+    list_display = ("callsign", "name", "email", "is_active", "is_staff", "created_at", "last_login_at")
     search_fields = ("callsign", "name", "email")
     list_filter = ("is_active", "is_staff", "email_verified_at")
     fieldsets = (
