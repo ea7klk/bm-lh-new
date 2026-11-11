@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.test import TestCase
 from django.utils import timezone
 
-from dashboard.live_consumers import LiveQSOConsumer
+from dashboard.live_consumers import LiveQSOConsumer, replay_order
 from dashboard.models import QSO, Talkgroup, User
 from dashboard.utils import LIVE_WINDOW_MINUTES
 
@@ -83,6 +83,73 @@ class LiveWindowTests(TestCase):
         payload = self.client.get("/api/live-qsos/").json()
 
         self.assertEqual([row["sessionId"] for row in payload], ["recent"])
+
+    def test_queryset_returns_newest_first(self):
+        self._qso("oldest", 2.5)
+        self._qso("middle", 1.5)
+        self._qso("newest", 0.5)
+
+        sessions = [qso.session_id for qso in self._consumer().queryset()]
+
+        self.assertEqual(sessions, ["newest", "middle", "oldest"])
+
+    def test_rest_endpoint_returns_newest_first(self):
+        self._qso("oldest", 2.5)
+        self._qso("newest", 0.5)
+        self.client.force_login(self.user)
+
+        payload = self.client.get("/api/live-qsos/").json()
+
+        self.assertEqual([row["sessionId"] for row in payload], ["newest", "oldest"])
+
+    def test_cap_keeps_the_newest_rows_not_the_oldest(self):
+        talkgroup = self.talkgroup
+        now = timezone.now()
+        QSO.objects.bulk_create([
+            QSO(
+                session_id=f"s{index:03d}",
+                source_call="EA7LIVE",
+                talkgroup_id=talkgroup.talkgroup_id,
+                destination_name="Alicante",
+                # s000 is the oldest, s149 the newest; all inside the window.
+                start_at=now - timedelta(seconds=170 - index),
+                stop_at=now - timedelta(seconds=165 - index),
+                duration_ms=5000,
+            )
+            for index in range(150)
+        ])
+
+        sessions = [qso.session_id for qso in self._consumer().queryset()]
+
+        self.assertEqual(len(sessions), 100)
+        self.assertEqual(sessions[0], "s149", "newest row must be first")
+        self.assertIn("s050", sessions, "the newest 100 are s050..s149")
+        self.assertNotIn("s049", sessions, "older rows must be dropped by the cap")
+
+    def test_stream_replay_order_leaves_newest_on_top(self):
+        """The page prepends each delta, so a batch must arrive oldest-first.
+
+        Uses the same replay_order() the consumer's stream() calls, and mirrors
+        live_qsos.html's prependQso() to prove the newest QSO renders on top.
+        """
+        self._qso("oldest", 2.5)
+        self._qso("middle", 1.5)
+        self._qso("newest", 0.5)
+        batch = list(self._consumer().queryset())
+        self.assertEqual([qso.session_id for qso in batch], ["newest", "middle", "oldest"])
+
+        rendered = []
+        for qso in replay_order(batch):  # exactly what stream() sends
+            rendered = [qso.session_id] + [row for row in rendered if row != qso.session_id]
+        rendered = rendered[:100]
+
+        self.assertEqual(rendered, ["newest", "middle", "oldest"])
+
+    def test_replay_order_reverses_a_newest_first_batch(self):
+        rows = ["newest", "middle", "oldest"]
+
+        self.assertEqual(replay_order(rows), ["oldest", "middle", "newest"])
+        self.assertEqual(rows, ["newest", "middle", "oldest"], "must not mutate its input")
 
     def test_live_page_requires_authentication(self):
         self.assertEqual(self.client.get("/user/live-qsos/").status_code, 302)

@@ -464,14 +464,19 @@ sub-millisecond, so this is not a latency win: the 3-minute query measures
 0.55–0.66 ms against 0.31 ms for the 30-minute one, a difference that is
 planning noise on a sub-millisecond query. The real effects are:
 
-1. **The initial snapshot is no longer stale.** `send_snapshot()` orders
-   ascending and caps at 100 rows, so a 30-minute window with 804 QSOs returned
-   the *oldest* hundred — roughly QSOs from 26–30 minutes ago — as the "live"
-   view. With 65–75 rows in the window the snapshot is complete. The underlying
-   truncation still exists for windows holding more than 100 QSOs (sustained
-   traffic above ~33 QSOs/minute), which is a known limit rather than a fixed
-   defect.
-2. **Catch-up is bounded.** After a reconnect or a stalled connection, a viewer
+1. **The initial snapshot is no longer stale.** At the time, `send_snapshot()`
+   ordered ascending and capped at 100 rows, so a 30-minute window with 804 QSOs
+   returned the *oldest* hundred — roughly QSOs from 26–30 minutes ago — as the
+   "live" view. With 65–75 rows in the window the snapshot was complete.
+2. **Newest first, and the cap keeps the newest rows (v1.2.8).** The snapshot
+   now orders `-stop_at`, so the page renders newest-on-top as received, and the
+   100-row cap retains the most recent hundred instead of discarding them — the
+   defect described in point 1 is closed rather than merely outgrown. The
+   delta stream keeps its one-second poll and sends each batch in
+   `replay_order()` (reversed), because the page prepends every delta; sending
+   newest-first there would leave a batch upside down. Both orders are asserted
+   in `test_live_views.py`, and reversing either was checked to fail the suite.
+3. **Catch-up is bounded.** After a reconnect or a stalled connection, a viewer
    can recover at most three minutes of missed QSOs rather than thirty, so the
    burst of per-second deltas cannot exceed 100 rows per poll for long.
 

@@ -15,6 +15,16 @@ def _window_start(now=None):
     return (now or timezone.now()) - timedelta(minutes=LIVE_WINDOW_MINUTES)
 
 
+def replay_order(rows):
+    """Order a delta batch the way the page must receive it.
+
+    The page prepends every delta and keeps the array it was given, so a batch
+    has to arrive oldest-first for the newest QSO to end up on top. rows()
+    returns newest-first for the snapshot, so the batch is reversed here.
+    """
+    return list(reversed(rows))
+
+
 class LiveQSOConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
         if not self.scope["user"].is_authenticated:
@@ -37,6 +47,8 @@ class LiveQSOConsumer(AsyncJsonWebsocketConsumer):
             await self.send_snapshot()
 
     async def send_snapshot(self):
+        # Newest first, which is the order the page renders: the client keeps
+        # the array as received.
         rows = await self.rows(after=None)
         self.last_seen = max((row["_stop"] for row in rows), default=_window_start())
         for row in rows:
@@ -48,7 +60,7 @@ class LiveQSOConsumer(AsyncJsonWebsocketConsumer):
             while True:
                 await asyncio.sleep(1)
                 rows = await self.rows(after=self.last_seen)
-                for row in rows:
+                for row in replay_order(rows):
                     self.last_seen = max(self.last_seen, row["_stop"])
                     row.pop("_stop", None)
                     await self.send_json({"type": "qso", "qso": row})
@@ -63,10 +75,11 @@ class LiveQSOConsumer(AsyncJsonWebsocketConsumer):
         return result
 
     def queryset(self, after=None):
-        """QSOs inside the live window, oldest first, capped at 100.
+        """The 100 newest QSOs inside the live window, newest first.
 
-        Separate from rows() so the window rule is testable without an event
-        loop.
+        Separate from rows() so the window and ordering rules are testable
+        without an event loop. Ordering descending keeps the newest 100 rather
+        than the oldest 100 when the window holds more than the cap.
         """
         filters = Q(stop_at__gte=_window_start())
         if after is not None:
@@ -80,4 +93,4 @@ class LiveQSOConsumer(AsyncJsonWebsocketConsumer):
         if country and country != "All": filters &= Q(talkgroup__country=country)
         talkgroups = [int(value) for value in self.filters.get("talkgroups", []) if str(value).isdigit()]
         if talkgroups: filters &= Q(talkgroup_id__in=talkgroups)
-        return QSO.objects.filter(filters).select_related("talkgroup").order_by("stop_at")[:100]
+        return QSO.objects.filter(filters).select_related("talkgroup").order_by("-stop_at")[:100]
