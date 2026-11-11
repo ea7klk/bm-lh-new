@@ -33,6 +33,13 @@ document** — every finding below is recorded, not applied.
 - Measured the live service: anonymous dashboard latency at two time ranges, a
   10-request concurrent burst, deep-offset pagination cost, and the cost of the
   admin data-quality query (91 s — see M1).
+- Built a local copy of the database at production row count and weekly density
+  (3.6M QSOs; 244,883 rows in the last seven days against production's 245,816)
+  and ran the real ASGI application against it at 1, 3, 6, 9 and 12 gunicorn
+  workers, at several client concurrencies, recording throughput, latency and
+  peak database connections. Then measured the effect of a covering index, a
+  `stop_at` index, a single-pass CTE rewrite, `work_mem`, and partition-based
+  retention. All of it is reported in "Scalability".
 - Inspected the deployment: the `web-env` secret's non-secret values, the
   settings actually resolved inside the running pod, container identity,
   resource limits, network policies, database connection usage, table sizes,
@@ -65,11 +72,25 @@ writes were performed against production data.
 - **Architecture**: workable, but synchronous heavy computation sits on the
   request path and in the admin tools, and the app has no caching layer and no
   background job runner — which is the root cause of H2 and M1.
+- **Scalability**: the database is the ceiling, not the web tier. Raising
+  gunicorn workers from 3 to 12 bought ~10% throughput and then made latency
+  worse; the measured database-only ceiling is 2.8 dashboard requests/second
+  against the application's 1.5. The workload is also nowhere near write-bound
+  (0.4 writes/s against ~66,000 rows/s of measured capacity), so a move to a
+  non-relational store would not help — see "Scalability", including why
+  NoSQL is the wrong lever here and what the right ones are, with measured
+  effects.
+- **The cheapest large win found**: `qsos` has no index on `stop_at`, so each
+  open live-QSO page full-scans 3.6M rows every second. One index takes that
+  query from 858 ms to 0.136 ms (H5).
 
-The two findings that matter most are H1 (a nine-character password signing
-every session cookie) and H2 (a handful of unauthenticated requests can take the
-site out of rotation). Neither requires an attacker to break any code: both are
-consequences of configuration and of putting expensive work in a request.
+The findings that matter most are H1 (a nine-character password signing every
+session cookie), H5 (every open live-QSO page full-scanning the QSO table once a
+second, for want of one index) and H2 (a handful of unauthenticated requests can
+take the site out of rotation). None of them requires anyone to break any code:
+they are consequences of configuration, of a missing index, and of putting
+repeated expensive work in a request. The first and cheapest of the three —
+H5 — is a single migration.
 
 ---
 
@@ -190,6 +211,9 @@ two days, since the week range is what makes the request expensive; (c) add a
 Traefik `ratelimit` middleware in front of the application; (d) serve
 `/health/` from a route that does not share the worker budget, or give the
 deployment a second replica so a single saturated pod cannot remove the service.
+"Scalability" quantifies each of these: the database alone serves 2.8
+dashboard requests/second, the application 1.5, and a 20–30 s cache moves the
+endpoint to the network ceiling because a payload serialises in 0.2 ms.
 
 ### H3. "Rebuild QSOs" silently destroys every QSO whose raw event was pruned — OPEN, irreversible
 
@@ -291,6 +315,58 @@ rows where it is non-NULL. A staff-set flag should be able to veto the purge
 outright. The defect is live rather than theoretical, but it needs a staff
 moderation action first, so it is not an emergency — merely urgent.
 
+### H5. Every open live-QSO page full-scans the entire QSO table once per second — OPEN
+
+**Files:** `bminfo/dashboard/live_consumers.py:41-51,53-71` (`stream` / `rows`),
+`bminfo/dashboard/live_views.py:16-19`, `bminfo/dashboard/models.py` (indexes)
+
+**Reachable path.** Any logged-in user opens `/user/live-qsos/`. The websocket
+consumer starts a loop that sleeps one second and then calls `rows()`, which
+filters on `stop_at >= now() - 30 minutes` and orders by `stop_at`. The `qsos`
+table has indexes on `start_at`, `source_id`, `destination_id` and `session_id`
+— **there is no index on `stop_at`**, so PostgreSQL has no way to find "the last
+thirty minutes" except by reading the table.
+
+**Measured against production** (`EXPLAIN ANALYZE`, read-only):
+
+```text
+-> Parallel Seq Scan on qsos  (actual time=616.112..638.626 rows=274 loops=3)
+Execution Time: 858.623 ms
+```
+
+Six hundred and sixteen milliseconds before the first row comes back, for a
+result set of 69 rows, because 3.6M rows (4.8 GB) must be read to find them.
+The consumer then does this **again one second later**, and again, for as long
+as the page stays open.
+
+**Why it matters.** One open live page costs 0.86 s of wall-clock database time
+per second, and because the plan runs three ways in parallel that is roughly
+**two and a half CPU-seconds per second** — several cores saturating continuously
+on a twelve-core node, to return 69 rows. Ten people watching the live feed
+would exhaust the machine while doing almost no useful work. This is the most
+expensive operation in the application per unit of value, and the one place
+where a single ordinary user can degrade the whole service.
+
+**The fix is one index.** Adding `qsos (stop_at DESC)` to the bench copy (same
+row count and density as production) turns the same query into:
+
+```text
+-> Index Scan Backward using qsos_stop_idx on qsos
+Execution Time: 0.136 ms
+```
+
+**858 ms → 0.136 ms, a factor of about 6,300**, with no code change, no schema
+migration (Django migrations can add the index) and no change in behaviour. The
+`live_views.live_qsos_api` endpoint runs the same unfiltered query and is fixed
+by the same index.
+
+**Secondary concern, not fixed by the index.** The polling loop is one query per
+connection per second. That is tolerable at 25 users once the query is cheap
+(25 queries/s against a 70-row index range), but the design does not scale
+linearly: it needs a shared poller with a channel layer, or `LISTEN/NOTIFY`, to
+serve hundreds of viewers from one query. Recorded under "Scalability" with the
+other options.
+
 ---
 
 ## Medium
@@ -332,6 +408,9 @@ for months:
 (the CronJob pattern already exists), batch deletes, and replace the ad-hoc
 metrics query with a materialised view refreshed on a schedule, or compute the
 page's metrics from `pg_stat_user_tables` estimates plus a bounded sample.
+"Scalability" adds the measured cost of the retention path: deleting 1M rows
+costs 1.28 s plus 4.32 s of `VACUUM`, against 147 ms to drop an equivalent
+partition.
 
 ### M2. No throttling on authentication, registration, or mail; registration is an unauthenticated mail sender — OPEN
 
@@ -632,6 +711,308 @@ ImproperlyConfigured` away.
 
 ---
 
+## Scalability
+
+This section is measurement-driven. Everything below was run either against the
+production database read-only or against a local copy loaded to the same weekly
+density (3.6M QSO rows, 244,883 in the last seven days versus production's
+245,816). Where a number comes from a synthetic copy rather than production it
+is labelled.
+
+### What this workload actually is
+
+| Property | Measured value |
+| --- | --- |
+| Queryable rows | 3.6M QSOs, 4.8 GB |
+| Audit rows | 12.8M raw events, 21 GB |
+| Ingest rate | ~34,000 QSOs/day = **0.4 writes/second** |
+| Measured write capacity | 100k rows inserted in 1.5 s = **~66,000 rows/second** |
+| Write headroom | roughly **five orders of magnitude** |
+| Accounts | 13 total, 12 active; documented target 25 concurrent |
+| Dashboard query cost | 4 range scans per request, plus 2 cheaper queries |
+| Dashboard refresh | each open dashboard polls every 10 seconds |
+| Live-QSO cost | 1 full table scan **per second per open page** (H5): 0.86 s wall, ~2.5 CPU-s |
+| Disk | 146 GB free of 435 GB (64% used), ~26 GB in tables |
+
+Two conclusions follow immediately, and they shape everything else:
+
+1. **This is not a write-scaling problem.** Production writes four rows a
+   second into a database that can take sixty-six thousand. Any architecture
+   chosen for write throughput — which is what NoSQL systems are mostly for — is
+   solving a problem this deployment does not have.
+2. **This is a read-repetition problem.** A handful of expensive aggregate
+   queries are re-executed, unchanged, many times per minute per user, and one
+   query (H5) is re-executed every second per user without a usable index.
+
+### Why "more gunicorn workers" is not the answer
+
+I ran the real ASGI application (`gunicorn` + `UvicornWorker`, the same flags as
+`entrypoint.sh`) against the production-density copy and measured
+`/api/dashboard/?timeRange=1w`, the single most expensive public endpoint.
+
+| Workers | Clients | Throughput | p50 latency |
+| --- | --- | --- | --- |
+| 1 | 10 | 1.1 req/s | 8.69 s |
+| 3 | 10 | 1.4 req/s | 6.28 s |
+| 6 | 10 | 1.6 req/s | 5.84 s |
+| 9 | 10 | 1.5 req/s | 6.05 s |
+| 12 | 10 | 1.6 req/s | 5.85 s |
+| 6 | 12 | 1.3 req/s | 8.29 s |
+| 12 | 16 | 1.4 req/s | 11.11 s |
+| — database only, no web layer | 10 | **2.8 req/s** | — |
+| — trivial endpoint `/health/` | 10 | **727 req/s** | 0.01 s |
+
+Three findings:
+
+- **Single-request latency does not improve at all with more workers.** One
+  request took 2.85 s with 3 workers and 2.77 s with 12. Its cost is the four
+  range scans, and no amount of parallelism in the web tier makes one request
+  cheaper.
+- **Throughput plateaus at about half the database's own ceiling.** With no web
+  layer at all, PostgreSQL serves 2.8 dashboard-equivalents per second. The
+  application tops out at 1.5–1.6. Workers stop helping at 6; beyond that they
+  queue.
+- **Oversubscribing makes it worse.** At 12 workers and 16 clients, throughput
+  fell to 1.4 req/s *and* p50 rose to 11.1 s — worse than 3 workers. The web
+  tier competes with itself for database time.
+
+The web tier is not the constraint: `/health/` sustains 727 requests per second
+on three workers, roughly five hundred times the dashboard's rate. Raising
+`APP_WORKERS` from 3 to 12 would buy roughly 10%, then cost latency. The honest
+recommendation is to **keep 3 workers, or go to 4–6 at most, and fix the
+queries** — which is also what the `AGENTS.md` rule about keeping the worker
+budget aligned with the connection budget implies.
+
+### The connection budget constrains worker count anyway
+
+Each thread that touches the database holds a connection for `CONN_MAX_AGE`
+(60 s). Connections are therefore not `workers × 1`: they track the number of
+*threads that have recently served a database-touching view*, and they
+accumulate.
+
+Measured with 6 workers and 12 concurrent clients, sampling once every two
+seconds through one sustained run:
+
+```text
+t+2s   12      t+10s  18
+t+4s   12      t+12s  21
+t+6s   12      t+14s  24
+t+8s   12      t+16s  24      t+20s  30   (still climbing)
+```
+
+It starts at exactly one connection per in-flight request and then grows because
+of thread churn, not worker count: `ASGIHandler` enters a `ThreadSensitiveContext`
+per request, and asgiref shuts that context's single-thread executor down when
+the request ends. Each request therefore runs on a fresh thread, and a thread
+that touches the database holds a connection for `CONN_MAX_AGE`. Runs with more
+workers and clients reached 34 (6 workers, 12 clients) and 45 (12 workers,
+16 clients).
+
+That gives a planning rule which fits every measurement above:
+
+> open connections ≈ `CONN_MAX_AGE` × database-touching requests per second,
+> capped by concurrency.
+
+At the ~2 requests/second this application sustains, a 60-second
+`CONN_MAX_AGE` allows up to **120 connections — the entire PostgreSQL budget**,
+from the web service alone, before the collector, pgAdmin or the CronJob are
+counted. The failure mode is `FATAL: sorry, too many clients already` on
+arbitrary requests: an availability incident caused by a tuning change.
+
+So worker scaling has two independent ceilings: the query ceiling above, and the
+connection ceiling here. **Lower `CONN_MAX_AGE` (15–30 s) or put PgBouncer in
+transaction mode in front of the database before raising `APP_WORKERS`.** The
+pooler is the better answer because it decouples connection count from both
+worker count and `CONN_MAX_AGE`.
+
+### Where the time actually goes
+
+Query plans and timings for one anonymous `timeRange=1w` dashboard request.
+Production figures are from `EXPLAIN (ANALYZE)`; the rest from the
+production-density copy.
+
+| Operation | Copy | Production | Note |
+| --- | --- | --- | --- |
+| Summary aggregate (count, sum, 2 distinct, max) | 616 ms | 1,139 ms | over half is `count(DISTINCT source_call)` sorting 10 MB to disk |
+| — same, `work_mem` 64 MB | 481 ms | not measured | sort stays in memory |
+| Callsign group-by (top 50) | 702 ms | 1,164 ms | ~9 MB external merge |
+| Talkgroup group-by (top 50) | 240 ms | 361 ms | |
+| Histogram (every `start_at`) | 32 ms | 794 ms | 245k rows to the application; the copy gets index-only scans, production does not |
+| Python fetch + bucket (245k rows → 29 buckets) | 550–650 ms | — | pure CPU, one worker's full attention |
+| `first()` for `firstQsoAt` | one extra range scan | one extra range scan | |
+| **Live-QSO poll (H5)** | 216 ms | **859 ms** | full table scan, every second per open page |
+| Live-QSO poll with `stop_at` index | **0.136 ms** | not applied | measured on the copy only |
+| Admin data-quality scan (M1) | — | 91.5 s | every maintenance page view |
+
+The dashboard issues **six SQL statements** per request, of which four scan the
+same range independently. Measured both ways, on the same data and the same
+range:
+
+- **copy, four separate queries:** 616 + 32 + 240 + 702 ms = **1,590 ms**
+- **copy, one materialised-CTE query returning all four answers:** **1,045 ms**
+  (990 ms at `work_mem` 64 MB) — about **1.6×**
+- **production, four separate queries:** 1,139 + 794 + 361 + 1,164 ms =
+  **3,458 ms**
+- **production, one materialised-CTE query:** **1,618 ms** — about **2.1×**
+
+The rewrite wins more on production than on the copy, because the copy gets
+index-only scans and production pays heap access for the same rows. Either way
+the mechanism is the same: the range is read once instead of four times.
+
+Note the ratio between the production and copy figures for the histogram: the
+copy reads an all-visible table and gets an index-only scan; production pays
+heap accesses because 12.8M rows are being written continuously and the
+visibility map lags. Index-only scans are not available for free on a live
+table.
+
+### Changes ranked by measured return
+
+Each entry states what was measured, not what is hoped for.
+
+1. **Index `qsos (stop_at DESC)` — 858 ms → 0.136 ms (≈6,300×).** Fixes H5 and
+   `live_qsos_api`. One index, no code change. This is by far the highest return
+   available and should be the first change made to this system.
+2. **Cache the dashboard payload for 20–30 s.** Every anonymous visitor with
+   the same filters receives a byte-identical response, and each dashboard
+   polls itself every 10 s, so a 25 s cache collapses a viewer's 2.5 polls per
+   window into one computation — about **2.5× for a single viewer and roughly
+   25× at ten concurrent viewers**, growing with traffic. Cost per cached
+   request is serialisation, measured at **0.198 ms for a 26 KB payload**,
+   against 2.8 s of query work: the endpoint stops being database-bound. Django
+   has no `CACHES` configured at all today, so this needs one decision (LocMem
+   per worker, or Redis shared across workers — the latter is required the
+   moment there is more than one replica).
+3. **Single-pass query rewrite — 2.1× on production (3,458 → 1,618 ms), 1.6× on
+   the copy (1,590 → 1,045 ms).** One materialised range CTE feeding summary,
+   histogram and both top-N lists, replacing four independent scans. Medium
+   effort, no schema change, same results — verified by comparing the four
+   answers against the four separate queries on the copy.
+4. **Covering index `(start_at DESC) INCLUDE (source_call, destination_id,
+   duration_ms)` — about 9% end-to-end** (1.4 → 1.5 req/s; summary 619 → 541 ms).
+   Modest, because the distinct-count sort dominates once heap access is
+   removed. Worth doing alongside 3, not instead of it.
+5. **`work_mem` 8 MB → 64 MB for these queries — 22% on the summary aggregate
+   (619 → 481 ms) and 5% on the callsign group-by.** The distinct counts spill
+   10 MB to disk every time. Set it per role or per transaction, not globally:
+   at 120 connections a global 64 MB is a 7.7 GB worst case.
+6. **Partition `raw_events` by month — retention becomes O(1).** Measured on a
+   1M-row probe: `DELETE` of 995,675 rows took 1.28 s plus **4.32 s of
+   `VACUUM`**, versus **147 ms** to drop an equivalent table. At production size
+   (21 GB, 12.8M rows) the current admin path additionally builds a multi-million
+   element Python list of primary keys first. Monthly partitions with
+   `DETACH`/`DROP` make retention a metadata operation, keep each index small,
+   and make the 91-second maintenance query (M1) tractable table-by-table.
+7. **PgBouncer in transaction mode, or a shorter `CONN_MAX_AGE`.** Not a speed
+   fix; it removes the connection ceiling described above, so worker count,
+   collector, pgAdmin and CronJobs stop competing for 120 slots, and it stops
+   connection consumption from scaling with request rate.
+8. **Pre-aggregated rollups — about 3× at this size, and they cannot replace the
+   live path.** A daily distinct-triple rollup `(day, talkgroup, source_call)`
+   for one week contains 80,000 rows against 244,778 raw rows. Real, but not
+   transformative, and `COUNT(DISTINCT)` is not additive across buckets, so
+   rollups answer "unique callsigns in this range" only approximately (or need
+   an HLL extension). Worth doing after 1–3 and only if 3 is insufficient.
+9. **Move `raw_events` payloads out of PostgreSQL — up to 80% smaller database.**
+   21 of the 26 GB is an append-only JSONB audit trail that is never queried by
+   field. Writing Parquet objects to storage, or a columnar table, removes the
+   dominant share of backup time, `VACUUM` cost and disk growth while keeping
+   PostgreSQL for everything that is queried.
+10. **Channels channel layer for live updates.** Once the `stop_at` index makes
+    each poll cheap (0.14 ms), one query per second per viewer is sustainable to
+    a few hundred users. Beyond that, the correct shape is one shared poller
+    publishing to a channel layer (Redis) that fans out to all consumers —
+    turning N queries per second into 1.
+
+### Would moving to a non-relational database help?
+
+Short answer: **no, and it would make this particular workload slower and more
+expensive to operate.** The reasoning is about the shape of the queries, not
+about technology preference.
+
+**What this application asks of its data store**, taken from the code:
+
+- Exact `COUNT(DISTINCT source_call)` and `COUNT(DISTINCT destination_id)` over
+  a window the user chooses at request time (`core_views.py:92`).
+- `GROUP BY destination_id ORDER BY count(*) DESC LIMIT 50` — top-N aggregation
+  over the same arbitrary window.
+- Joins to `talkgroups` for name, country, continent — against a table that is
+  **rewritten**. `repair_talkgroups()` and `sync_talkgroups()` update the
+  classification of all 1,856 rows on every collector start and nightly at
+  02:00 (`talkgroups.py:87-105`, `collector.py:340-366`).
+- Substring search: `source_call__icontains`.
+- `percentile_cont(0.95)` over ingestion delay (`admin_views.py:59-62`).
+- Transactional identity: unique callsign and email, single-use verification
+  tokens consumed under `select_for_update()`, and FK cascade when a user is
+  purged.
+- Range deletes for retention, and `VACUUM` afterwards.
+
+That list is unusually hostile to non-relational stores: it is dominated by
+ad-hoc exact aggregation with joins, which is the one thing relational engines
+are good at and the thing key-value and document stores are worst at.
+
+**Engine by engine.**
+
+- **DynamoDB** — no aggregation operators at all. Every metric above becomes a
+  GSI scan plus client-side computation, or a set of counter items updated on
+  write (which introduces hot partitions and still cannot answer "distinct
+  callsigns in an arbitrary window"). `COUNT(DISTINCT)` and percentiles do not
+  exist. It wins on write throughput, where we need 0.4/s.
+- **MongoDB** — `$group`/`$sum` cover the sums and counts; `$addToSet` gives
+  distinct but materialises arrays and is bounded by the 100 MB group limit, so
+  it works for a week and gets risky for a quarter; `$percentile` exists in 7.0+;
+  TTL indexes would solve retention elegantly. But the talkgroup join becomes
+  either denormalisation — and then a nightly repair rewrites millions of
+  documents — or a `$lookup` on every read. Feasible; strictly more work, no
+  measured gain.
+- **Cassandra / ScyllaDB** — excellent write throughput and natural time-bucket
+  partitioning, and essentially no aggregation. You would hand-maintain counter
+  tables, and `COUNT(DISTINCT)` is impossible. Wrong tool for a read-aggregation
+  workload.
+- **ClickHouse** — genuinely good at exactly this: columnar, sorted by
+  `start_at`, `uniqExact` for distinct counts, `AggregatingMergeTree`
+  materialised views, `TTL` for retention. It would answer the one-week
+  dashboard in tens of milliseconds. But it is not an OLTP database: no unique
+  constraints, no cheap single-row update, asynchronous mutations, and it cannot
+  hold the user and token tables.
+- **TimescaleDB** — PostgreSQL with hypertables, continuous aggregates,
+  compression and `add_retention_policy`. Keeps every query, the ORM, the joins,
+  the constraints and the transactions; adds the partitioning that fixes
+  retention and the pre-aggregation that fixes the dashboard. **This is the only
+  "change the database" option that is a strict improvement with no rewrite.**
+
+**Why migration is the wrong lever here.** The cost of the current problem is
+*repetition*: the same 245k-row scan, run again and again for the same answer.
+A cache eliminates 90–95% of those; an index eliminates 99.98% of the live poll.
+Neither has anything to do with the storage engine. Moving to a document or
+key-value store would preserve the repetition (N users still trigger N
+aggregations) while removing the two things that currently make the queries
+affordable — a planner that can answer ad-hoc aggregate queries with an index,
+and `COUNT(DISTINCT)` that is exact and cheap.
+
+**Where a non-relational store genuinely fits** is not the query path but the
+audit path. `raw_events` is 21 GB of append-only JSONB, indexed only by
+`session_id` and `received_at`. That is a log, not a relational data set, and
+object storage or a columnar store would serve it better and shrink the database
+by roughly 80%. That is the migration worth doing — a smaller blast radius than
+replacing `qsos`, and a much larger operational payoff.
+
+**If QSO volume grows 10–100×**, the right move is a second, derived store:
+keep PostgreSQL as the system of record for identity and ingestion, and feed
+ClickHouse (or a Timescale continuous aggregate) for analytics. That is additive,
+reversible, and keeps the ORM's transactional guarantees where they matter.
+
+### Capacity plan by tier
+
+| Tier | Trigger | Changes |
+| --- | --- | --- |
+| **Now** (12 accounts, 25 target) | — | `stop_at` index (H5), 20–30 s response cache, single-pass query, covering index, `work_mem` 64 MB for the aggregate queries. Keep 3 workers. |
+| **~100–500 concurrent readers** | sustained >5 req/s on the dashboard, or probe flaps | Add PgBouncer, then 4–6 workers; partition `raw_events`; move the admin maintenance work to Jobs (M1); put a read replica behind the analytics endpoints. |
+| **~1,000+ concurrent, or 10× ingest** | write latency or query times growing without a code change | Timescale continuous aggregates (or ClickHouse fed by the collector) for analytics; Redis channel layer for live updates; move `raw_events` to object storage. Keep PostgreSQL for identity, tokens and ingestion. |
+| **Any tier** | — | Do not raise `APP_WORKERS` past ~6 without PgBouncer. Measured: no throughput gain, worse latency, and a hard connection ceiling. |
+
+
+---
+
 ## Checked and clean
 
 Traced and found sound, so the scope of the "clean" claim is honest.
@@ -690,11 +1071,13 @@ Traced and found sound, so the scope of the "clean" claim is honest.
   40–60 GB of data for six months. At 3.5 months the tables hold 21 GB
   (`raw_events`) + 4.8 GB (`qsos`) ≈ 26 GB, so the estimate is on track. Node
   headroom is 146 GB free of 435 GB.
-- **Connection budget.** 24 of 120 connections in use (18 idle, 1 active) with
-  three Uvicorn workers, one collector, pgAdmin and the CronJob — consistent
-  with the documented "three workers, 120 connections" target. Django's
-  thread-sensitive ASGI handling keeps sync views on one thread per worker, so
-  the budget is not at risk from the async stack.
+- **Connection budget at the current worker count.** 24 of 120 connections in
+  use (18 idle, 1 active) with three Uvicorn workers, one collector, pgAdmin and
+  the CronJob — consistent with the documented "three workers, 120 connections"
+  target. The caveat is in "Scalability": under concurrent load a worker holds
+  several connections, not one (measured 34 at 6 workers and 45 at 12), so the
+  budget is not at risk today but is the reason worker count should not be
+  raised without a pooler.
 - **Secret hygiene in Git.** `.env` and its variants are ignored; `git log --all
   -- .env` is empty; the `gitops/` and Fleet secrets are SOPS-encrypted
   (`ENC[AES256_GCM,...]`); no credential appears in `README.md`,
@@ -722,29 +1105,41 @@ Traced and found sound, so the scope of the "clean" claim is honest.
 
 ## Suggested order of work
 
-1. **H1 — replace the signing key.** Generate a real `APP_SECRET_KEY`, re-encrypt
-   the SOPS manifest, and make the setting fail closed. Do this first: it is the
-   only finding whose exploitation is "log in with the password you already
-   have". Expect all sessions to be invalidated.
-2. **H4 — narrow the purge predicate before it is trusted.** It runs nightly at
+1. **H5 — add an index on `qsos (stop_at)`.** One migration, no code change, and
+   it takes the live-QSO query from 858 ms to 0.136 ms. Nothing else in this
+   document offers a 6,000× improvement for one line. Do it first because it is
+   the cheapest thing that is also a live production defect.
+2. **H1 — replace the signing key.** Generate a real `APP_SECRET_KEY`, re-encrypt
+   the SOPS manifest, and make the setting fail closed. It is the only finding
+   whose exploitation is "log in with the password you already have". Expect all
+   sessions to be invalidated.
+3. **H4 — narrow the purge predicate before it is trusted.** It runs nightly at
    03:17. Record verification intent (token existence or a
    `verification_sent_at` column) instead of inferring it from `is_active`,
    and let a staff flag veto deletion.
-3. **H3 — make rebuild non-destructive.** Regenerate only what has a raw event;
+4. **H2 + M1 — get heavy work off the request path.** A 20–30 s cache on the
+   dashboard payload alone moves the endpoint from 1.5 requests/second to the
+   network ceiling, because the payload serialises in 0.2 ms (see
+   "Scalability"). Then the single-pass query rewrite (2–3× less database work),
+   the covering index and 64 MB `work_mem` for these aggregates. The admin
+   maintenance tools belong in Jobs, batched, with the metrics query precomputed.
+5. **H3 — make rebuild non-destructive.** Regenerate only what has a raw event;
    move the operation out of the request path.
-4. **H2 + M1 — get heavy work off the request path.** A short cache on the
-   dashboard payload, a smaller anonymous time range, and a second replica would
-   each reduce the blast radius on their own. The admin maintenance tools belong
-   in Jobs, batched, with the metrics query precomputed.
-5. **M2 — throttle login, registration and password reset** at the edge or in a
+6. **M2 — throttle login, registration and password reset** at the edge or in a
    shared store, and stop accepting unbounded mail sends.
-6. **M3, M4, M5, M6, M7 — the cheap correctness and hygiene set.** One-line
+7. **M3, M4, M5, M6, M7 — the cheap correctness and hygiene set.** One-line
    settings (`COOKIE_SECURE`, `ALLOWED_HOSTS`, password validators), a shared
    integer-parse helper, a fixed error string on `/status/`, and a non-root
    container with limits and a NetworkPolicy.
-7. **M8 + L2 + L9 — the account-flow edges.** A resend endpoint removes the
+8. **M8 + L2 + L9 — the account-flow edges.** A resend endpoint removes the
    three-day dead zone and makes the enumeration trade-off a conscious one.
-8. **L1, L3, L4, L6, L7 — close out** as their own small changes.
+9. **Scalability follow-ups** — partition `raw_events` by month so retention is
+   a metadata operation, add PgBouncer before touching `APP_WORKERS`, and move
+   `raw_events` payloads to object storage to shrink the database by ~80%. If
+   volume grows 10×, add Timescale continuous aggregates or ClickHouse as a
+   derived analytics store; do not migrate the primary database (see
+   "Scalability").
+10. **L1, L3, L4, L6, L7 — close out** as their own small changes.
 
 ## Limits
 
@@ -760,6 +1155,28 @@ production database at 12.8M raw events; it will vary with cache state and
 should be read as an order of magnitude, not a constant. The same applies to the
 latency numbers in H2, which were single samples (three for the baseline, one
 burst of ten).
+
+**The scalability benchmark, and what it does not prove.** The worker, index and
+query-rewrite figures come from a local PostgreSQL 16 instance loaded to
+production row count and weekly density, driven through the real ASGI
+application. The comparison is therefore like-for-like between configurations,
+which is what the recommendations rest on; the absolute numbers are not
+production numbers. Differences worth naming: the copy ran with
+`shared_buffers` 128 MB (production 256 MB), with JIT disabled (the extracted
+binary has no LLVM), over loopback with no TLS, on the same twelve-core host that
+runs the live cluster, and with a warm page cache. The single production
+dashboard request takes 4.3 s from outside while the copy answers in 2.8 s
+locally, and the histogram query is 794 ms on production against 32 ms on the
+copy — partly the missing TLS and network, partly the visibility-map effect
+described above. Treat the copy's figures as relative, and the production
+`EXPLAIN` figures (4.3 s request, 858 ms live poll, 91.5 s maintenance scan) as
+absolute.
+
+Load was deliberately bounded — at most 16 concurrent clients and 48 requests
+per configuration — because this host also serves the live site. Sustained
+saturation behaviour (what happens after ten minutes at the ceiling, whether the
+readiness probe actually flaps) was not observed. The `stop_at` index was
+verified by measurement on the copy only; it has not been applied to production.
 
 Database and cluster state were inspected read-only. No production writes were
 performed, no secrets were printed, and no configuration was changed. Backup and
