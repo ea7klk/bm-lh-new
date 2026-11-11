@@ -51,6 +51,15 @@ class PurgeUnverifiedUsersCommandTests(TestCase):
         self.assertIn("Deleted 1 unverified account(s)", output.getvalue())
         self.assertIn("EA5OLD", output.getvalue())
 
+    def test_keeps_active_legacy_accounts_without_verification_stamp(self):
+        # Accounts migrated from the legacy application are active but carry no
+        # email_verified_at. They are real users and must never be purged.
+        legacy = self._user("EA5LEGACY", is_active=True, verified=False, age_days=200)
+
+        call_command("purge_unverified_users", stdout=StringIO())
+
+        self.assertTrue(User.objects.filter(pk=legacy.pk).exists())
+
     def test_dry_run_reports_without_deleting(self):
         stale = self._user("EA5OLD")
         output = StringIO()
