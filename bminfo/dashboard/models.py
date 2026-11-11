@@ -123,6 +123,10 @@ class QSO(models.Model):
             models.Index(fields=["-start_at"], name="qsos_start_idx"),
             models.Index(fields=["source_id", "-start_at"], name="qsos_source_start_idx"),
             models.Index(fields=["talkgroup", "-start_at"], name="qsos_dest_start_idx"),
+            # The live-QSO consumer polls "the last 30 minutes" once per second
+            # per open page, ordered by stop_at. Without this index PostgreSQL
+            # answers it with a full scan of every QSO.
+            models.Index(fields=["-stop_at"], name="qsos_stop_idx"),
         ]
 
     def __str__(self):

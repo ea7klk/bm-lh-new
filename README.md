@@ -163,6 +163,12 @@ Decoded events are retained for auditing according to
 `RAW_EVENT_KERCHUNK_THRESHOLD_SECONDS`. QSO writes remain idempotent by session
 ID so reconnects and duplicate deliveries do not duplicate transmissions.
 
+The live-QSO stream polls `qsos` for the last thirty minutes, ordered by
+`stop_at`, once per second per connected viewer. Migration `0006` adds
+`qsos_stop_idx` on `stop_at` so PostgreSQL answers that poll from an index
+instead of scanning the whole table; the index build is the reason a deploy with
+existing data takes a few seconds longer than one without.
+
 ## Concurrency and six-month sizing
 
 The default Compose profile is sized for approximately 25 concurrent dashboard
