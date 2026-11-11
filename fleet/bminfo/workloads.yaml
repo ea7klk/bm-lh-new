@@ -331,7 +331,7 @@
                 }
               }
             ],
-            "image": "ghcr.io/ea7klk/bminfo-new:v1.2.3@sha256:23ff9194106b9bb8797c936e3cb0994a93b9429553eeb75edd10487a75986351",
+            "image": "ghcr.io/ea7klk/bminfo-new:v1.2.4@sha256:6806acf68b55eedc88df51404876eb373ddc39f3cdb20ae6a973fac8eb32af3a",
             "imagePullPolicy": "IfNotPresent",
             "name": "web",
             "ports": [
@@ -596,5 +596,81 @@
     "tls": {
       "certResolver": "acmeresolver"
     }
+  }
+}
+
+---
+{
+  "apiVersion": "batch/v1",
+  "kind": "CronJob",
+  "metadata": {
+    "labels": {
+      "kustomize.toolkit.fluxcd.io/name": "bminfo-web",
+      "kustomize.toolkit.fluxcd.io/namespace": "flux-system"
+    },
+    "name": "purge-unverified-users",
+    "namespace": "bminfo"
+  },
+  "spec": {
+    "concurrencyPolicy": "Forbid",
+    "failedJobsHistoryLimit": 3,
+    "jobTemplate": {
+      "spec": {
+        "backoffLimit": 2,
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "purge-unverified-users"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "containers": [
+              {
+                "command": [
+                  "python",
+                  "manage.py",
+                  "purge_unverified_users"
+                ],
+                "envFrom": [
+                  {
+                    "secretRef": {
+                      "name": "web-env"
+                    }
+                  }
+                ],
+                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.4@sha256:6806acf68b55eedc88df51404876eb373ddc39f3cdb20ae6a973fac8eb32af3a",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "purge-unverified-users",
+                "resources": {
+                  "requests": {
+                    "cpu": "25m",
+                    "memory": "64Mi"
+                  }
+                },
+                "securityContext": {},
+                "workingDir": "/app"
+              }
+            ],
+            "dnsPolicy": "ClusterFirst",
+            "imagePullSecrets": [
+              {
+                "name": "registry-credentials"
+              }
+            ],
+            "nodeSelector": {
+              "kubernetes.io/hostname": "spainip-k3s"
+            },
+            "restartPolicy": "OnFailure",
+            "schedulerName": "default-scheduler",
+            "securityContext": {},
+            "terminationGracePeriodSeconds": 30
+          }
+        }
+      }
+    },
+    "schedule": "17 3 * * *",
+    "successfulJobsHistoryLimit": 1,
+    "timeZone": "Etc/UTC"
   }
 }
