@@ -44,10 +44,11 @@ document** — every finding below is recorded, not applied.
   settings actually resolved inside the running pod, container identity,
   resource limits, network policies, database connection usage, table sizes,
   and the age distribution of retained data.
-- Implemented and shipped the one fix in this document that pays for itself
-  immediately: migration `0006` adds `qsos_stop_idx` (H5). Its build cost,
-  lock behaviour, index size and post-migration query plans were all measured
-  on the production-density copy before deploying, and are recorded in H5.
+- Implemented, shipped and verified the one fix in this document that pays for
+  itself immediately: migration `0006` adds `qsos_stop_idx` (H5). Build cost,
+  lock behaviour, index size and post-migration query plans were measured on the
+  production-density copy before deploying, then confirmed against production
+  after it (858.6 ms → 0.308 ms, index built in ~2.5 s, 73 MB).
 
 Side effects on production, stated for honesty: one `_maintenance_stats()` call
 (91 s of database time, the same work the maintenance page performs on every
@@ -84,11 +85,12 @@ writes were performed against production data.
   non-relational store would not help — see "Scalability", including why
   NoSQL is the wrong lever here and what the right ones are, with measured
   effects.
-- **The cheapest large win found, and now fixed**: `qsos` had no index on
-  `stop_at`, so each open live-QSO page full-scanned 3.6M rows every second
-  (858 ms of production database time, per second, per viewer). Migration
-  `0006` adds the index; the same query is now an index scan at 0.1 ms (H5,
-  shipped in v1.2.6).
+- **The cheapest large win found, and now fixed and verified**: `qsos` had no
+  index on `stop_at`, so each open live-QSO page full-scanned 3.6M rows every
+  second (858 ms of production database time, per second, per viewer).
+  Migration `0006` adds the index; on production the same query is now an index
+  scan at **0.308 ms** — a factor of 2,790, for a 73 MB index built in about
+  2.5 s during the deploy (H5, shipped in v1.2.6).
 
 The findings that matter most are H1 (a nine-character password signing every
 session cookie), H5 (every open live-QSO page full-scanning the QSO table once a
@@ -400,30 +402,53 @@ All three query shapes the live path uses were checked against `EXPLAIN
 
 **Deploy cost, measured.** `entrypoint.sh` runs `manage.py migrate` before
 starting gunicorn, so the build happens inside the container start, with the
-site down. That cost was measured rather than assumed:
+site down. That cost was measured on the copy first, then observed in
+production:
 
 - Applying `0006` to a table already holding 3.6M rows took **2.2 s** on the
   copy (1.26 GB total, ~409 MB heap).
-- Production's heap is **3,710 MB** for 3,598,845 rows — nine times the copy —
-  so the build reads roughly nine times as much. Scaling the I/O portion puts
-  it at **about 20 s**, comfortably inside both the `startupProbe`
-  (`failureThreshold: 180`, `periodSeconds: 10` — thirty minutes) and
-  `APP_TIMEOUT_SECONDS` (120).
+- I predicted **about 20 s** for production by scaling that by the nine-fold
+  difference in heap size (3,710 MB there versus ~409 MB on the copy). **That
+  prediction was wrong by an order of magnitude in the safe direction.** The
+  container started at `12:03:17Z` and `django_migrations` records `0006` at
+  `12:03:19.774Z`, so the entire `migrate` step — connection, bookkeeping and
+  the index build — took about **2.5 s**. The scaling was wrong because the
+  index is on a single timestamp column plus the tuple id: its size depends on
+  row *count*, not row width, and the table was warm in the page cache. The
+  conservative estimate cost nothing here, but it is worth knowing that
+  extrapolating index-build time from heap size overestimates badly.
 - `CREATE INDEX` takes a `SHARE` lock, which blocks writes but permits reads.
   The deployment uses `strategy: Recreate`, so the previous pod — and with it
   the collector — is stopped before the new one migrates. Nothing is writing to
   `qsos` at that moment, and nothing is reading it through the application
   either, because gunicorn has not started yet.
+- The build was never at risk of the `startupProbe`
+  (`failureThreshold: 180`, `periodSeconds: 10`) or `APP_TIMEOUT_SECONDS` (120).
 
-The index occupies **77 MB** on the copy, the same as the existing
-`qsos_start_idx` (also a single timestamp); expect roughly 190 MB on production.
-That is a fair price for removing 2.5 core-seconds per second of wasted work per
-open live page.
+The index occupies **73 MB** on production (77 MB on the copy) — also predicted
+too high at ~190 MB, for the same reason. That is a fair price for removing
+roughly 2.5 CPU-seconds per second of wasted work per open live page.
 
-**Verified.** `manage.py check` clean; `makemigrations --check --dry-run`
-reports no changes; the full suite (68 tests) passes; the migration applies on a
-fresh database and on one with data; and `pg_indexes` on the fresh database
-lists `qsos_stop_idx` alongside the six pre-existing indexes.
+**Verified in production after deploy (v1.2.6).** The migration is recorded as
+applied, `pg_indexes` lists `qsos_stop_idx`, and the pod rolled out with zero
+restarts and a passing readiness probe:
+
+```text
+before:  Parallel Seq Scan on qsos                    Execution Time: 858.623 ms
+after:   Index Scan using qsos_stop_idx on qsos       Execution Time: 0.308 ms
+```
+
+**858.6 ms → 0.308 ms on production, a factor of about 2,790.** The
+`ORDER BY stop_at DESC` shape used by `live_qsos_api` measures 0.787 ms, and
+`pg_stat_user_indexes` shows the index in continuous use
+(`idx_scan` 402 → 478 over the twenty seconds after deploy), which is the live
+consumers themselves, not my measurements.
+
+**Verified before deploy.** `manage.py check` clean; `makemigrations --check
+--dry-run` reports no changes; the full suite (68 tests) passes; `sqlmigrate`
+emits exactly one statement; and the migration applies both to a fresh database
+and to one holding 3.6M rows, with `pg_indexes` listing `qsos_stop_idx`
+alongside the six pre-existing indexes in both cases.
 
 **What the index does not fix.** The polling loop is still one query per
 connection per second. That is now cheap enough (0.1 ms against a 70-row index
@@ -907,7 +932,7 @@ production-density copy.
 | Python fetch + bucket (245k rows → 29 buckets) | 550–650 ms | — | pure CPU, one worker's full attention |
 | `first()` for `firstQsoAt` | one extra range scan | one extra range scan | |
 | **Live-QSO poll (H5)** — before | 168 ms | **859 ms** | full table scan, every second per open page |
-| Live-QSO poll (H5) — **after `qsos_stop_idx`** | **0.100 ms** | applied in v1.2.6 | index scan; H5 records the full evidence |
+| Live-QSO poll (H5) — **after `qsos_stop_idx`** | **0.100 ms** | **0.308 ms** | index scan; deployed and verified in v1.2.6 |
 | Admin data-quality scan (M1) | — | 91.5 s | every maintenance page view |
 
 The dashboard issues **six SQL statements** per request, of which four scan the
@@ -935,9 +960,9 @@ table.
 
 Each entry states what was measured, not what is hoped for.
 
-1. ~~**Index `qsos (stop_at DESC)`**~~ — **done in v1.2.6** (H5). 859 ms → index
-   scan at 0.1 ms on production-class data; 2.2 s to build, 77 MB of index, no
-   application code changed.
+1. ~~**Index `qsos (stop_at DESC)`**~~ — **done and verified in v1.2.6** (H5).
+   Production: 858.6 ms → **0.308 ms**; built in ~2.5 s during the deploy,
+   73 MB of index, no application code changed.
 2. **Cache the dashboard payload for 20–30 s.** Every anonymous visitor with
    the same filters receives a byte-identical response, and each dashboard
    polls itself every 10 s, so a 25 s cache collapses a viewer's 2.5 polls per
@@ -1071,7 +1096,7 @@ reversible, and keeps the ORM's transactional guarantees where they matter.
 
 | Tier | Trigger | Changes |
 | --- | --- | --- |
-| **Now** (12 accounts, 25 target) | — | ~~`stop_at` index (H5)~~ — **done in v1.2.6**. Remaining: 20–30 s response cache, single-pass query, covering index, `work_mem` 64 MB for the aggregate queries. Keep 3 workers. |
+| **Now** (12 accounts, 25 target) | — | ~~`stop_at` index (H5)~~ — **done and verified in v1.2.6**. Remaining: 20–30 s response cache, single-pass query, covering index, `work_mem` 64 MB for the aggregate queries. Keep 3 workers. |
 | **~100–500 concurrent readers** | sustained >5 req/s on the dashboard, or probe flaps | Add PgBouncer, then 4–6 workers; partition `raw_events`; move the admin maintenance work to Jobs (M1); put a read replica behind the analytics endpoints. |
 | **~1,000+ concurrent, or 10× ingest** | write latency or query times growing without a code change | Timescale continuous aggregates (or ClickHouse fed by the collector) for analytics; Redis channel layer for live updates; move `raw_events` to object storage. Keep PostgreSQL for identity, tokens and ingestion. |
 | **Any tier** | — | Do not raise `APP_WORKERS` past ~6 without PgBouncer. Measured: no throughput gain, worse latency, and a hard connection ceiling. |
@@ -1242,11 +1267,13 @@ per configuration — because this host also serves the live site. Sustained
 saturation behaviour (what happens after ten minutes at the ceiling, whether the
 readiness probe actually flaps) was not observed.
 
-The `stop_at` index (H5) was designed, built and verified against the copy, then
-deployed; its production build time is an extrapolation from the copy (2.2 s at
-1.26 GB scaled to a 3.7 GB heap, so about 20 s) and the deployment log is the
-only direct evidence of the real figure. Everything else in "Scalability" is
-still a proposal and has not been applied.
+The `stop_at` index (H5) is no longer a proposal: it was designed and measured
+against the copy, deployed as migration `0006` in v1.2.6, and then verified
+against production (`django_migrations`, `pg_indexes`, live `EXPLAIN ANALYZE`
+and `idx_scan` counters). The production build time comes from container start
+and migration timestamps rather than from a stopwatch around `CREATE INDEX`, so
+it is accurate to about a second. Everything else in "Scalability" remains a
+proposal and has not been applied.
 
 Database and cluster state were inspected read-only. No production writes were
 performed, no secrets were printed, and no configuration was changed. Backup and
