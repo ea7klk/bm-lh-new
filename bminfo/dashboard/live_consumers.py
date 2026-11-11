@@ -8,6 +8,11 @@ from django.utils import timezone
 
 from .core_views import qso_json
 from .models import QSO
+from .utils import LIVE_WINDOW_MINUTES
+
+
+def _window_start(now=None):
+    return (now or timezone.now()) - timedelta(minutes=LIVE_WINDOW_MINUTES)
 
 
 class LiveQSOConsumer(AsyncJsonWebsocketConsumer):
@@ -17,7 +22,7 @@ class LiveQSOConsumer(AsyncJsonWebsocketConsumer):
             return
         await self.accept()
         self.filters = {}
-        self.last_seen = timezone.now() - timedelta(minutes=30)
+        self.last_seen = _window_start()
         await self.send_snapshot()
         self.stream_task = asyncio.create_task(self.stream())
 
@@ -28,12 +33,12 @@ class LiveQSOConsumer(AsyncJsonWebsocketConsumer):
     async def receive_json(self, content, **kwargs):
         if content.get("type") in {"subscribe", "filters"}:
             self.filters = content.get("filters", content)
-            self.last_seen = timezone.now() - timedelta(minutes=30)
+            self.last_seen = _window_start()
             await self.send_snapshot()
 
     async def send_snapshot(self):
         rows = await self.rows(after=None)
-        self.last_seen = max((row["_stop"] for row in rows), default=timezone.now() - timedelta(minutes=30))
+        self.last_seen = max((row["_stop"] for row in rows), default=_window_start())
         for row in rows:
             row.pop("_stop", None)
         await self.send_json({"type": "snapshot", "qsos": rows})
@@ -52,8 +57,18 @@ class LiveQSOConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def rows(self, after=None):
-        start = timezone.now() - timedelta(minutes=30)
-        filters = Q(stop_at__gte=start)
+        result = []
+        for qso in self.queryset(after):
+            item = qso_json(qso, relative=True); item["_stop"] = qso.stop_at; result.append(item)
+        return result
+
+    def queryset(self, after=None):
+        """QSOs inside the live window, oldest first, capped at 100.
+
+        Separate from rows() so the window rule is testable without an event
+        loop.
+        """
+        filters = Q(stop_at__gte=_window_start())
         if after is not None:
             filters &= Q(stop_at__gt=after)
         callsign = str(self.filters.get("callsign", "")).strip()
@@ -65,7 +80,4 @@ class LiveQSOConsumer(AsyncJsonWebsocketConsumer):
         if country and country != "All": filters &= Q(talkgroup__country=country)
         talkgroups = [int(value) for value in self.filters.get("talkgroups", []) if str(value).isdigit()]
         if talkgroups: filters &= Q(talkgroup_id__in=talkgroups)
-        result = []
-        for qso in QSO.objects.filter(filters).select_related("talkgroup").order_by("stop_at")[:100]:
-            item = qso_json(qso, relative=True); item["_stop"] = qso.stop_at; result.append(item)
-        return result
+        return QSO.objects.filter(filters).select_related("talkgroup").order_by("stop_at")[:100]

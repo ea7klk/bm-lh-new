@@ -15,6 +15,13 @@ TIME_RANGES = {
 CALENDAR_RANGES = {"today", "yesterday", "lastWeek", "lastMonth"}
 AUTHENTICATED_RANGES = {"2w", "1M", "lastMonth", "2M", "3M"}
 
+# Trailing window of the live-QSO page, shared by the websocket consumer and its
+# REST twin so the two cannot drift apart. It is deliberately short: the
+# consumer re-queries once per second for every connected viewer, so this value
+# sets the cost of each of those polls and bounds how far back a reconnecting
+# viewer can recover missed QSOs.
+LIVE_WINDOW_MINUTES = 3
+
 
 def range_bounds(value: str | None, now: datetime | None = None) -> tuple[datetime, datetime | None]:
     value = value if value in TIME_RANGES or value in CALENDAR_RANGES else "24h"

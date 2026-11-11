@@ -331,7 +331,9 @@ moderation action first, so it is not an emergency — merely urgent.
 
 **Reachable path.** Any logged-in user opens `/user/live-qsos/`. The websocket
 consumer starts a loop that sleeps one second and then calls `rows()`, which
-filters on `stop_at >= now() - 30 minutes` and orders by `stop_at`. The `qsos`
+filters on `stop_at >= now() - LIVE_WINDOW_MINUTES` and orders by `stop_at`.
+When this finding was written that window was 30 minutes; it is now 3 (see
+"Window narrowed to three minutes" below). The `qsos`
 table had indexes on `start_at`, `source_id`, `destination_id` and `session_id`
 — **no index on `stop_at`** — so PostgreSQL had no way to find "the last thirty
 minutes" except by reading the whole table.
@@ -450,13 +452,44 @@ emits exactly one statement; and the migration applies both to a fresh database
 and to one holding 3.6M rows, with `pg_indexes` listing `qsos_stop_idx`
 alongside the six pre-existing indexes in both cases.
 
-**What the index does not fix.** The polling loop is still one query per
-connection per second. That is now cheap enough (0.1 ms against a 70-row index
-range) that 25 concurrent viewers cost about 2.5 ms of database time per second
-in total, so the documented target is comfortably met. It still does not scale
-linearly — a shared poller publishing to a channel layer, or `LISTEN/NOTIFY`,
-would turn N queries per second into one. Recorded under "Scalability" as the
-next step for that path, not as a defect.
+**Window narrowed to three minutes (v1.2.7).** The trailing window was reduced
+from 30 minutes to 3, defined once as `LIVE_WINDOW_MINUTES` in
+`bminfo/dashboard/utils.py` and read by both the websocket consumer and
+`/api/live-qsos/`, so the two live endpoints cannot drift apart.
+
+Production holds 804 QSOs in the last 30 minutes and 65 in the last 3 — the
+window change is therefore a **12× reduction in the row range each poll can
+consider**, though the index already made the query sub-millisecond, so this is
+not a latency win: the 3-minute query measures 0.55–0.66 ms against 0.31 ms for
+the 30-minute one, a difference that is planning noise on a sub-millisecond
+query. The real effects are:
+
+1. **The initial snapshot is no longer stale.** `send_snapshot()` orders
+   ascending and caps at 100 rows, so a 30-minute window with 804 QSOs returned
+   the *oldest* hundred — roughly QSOs from 26–30 minutes ago — as the "live"
+   view. With 65 rows in the window the snapshot is complete. The underlying
+   truncation still exists for windows holding more than 100 QSOs (sustained
+   traffic above ~33 QSOs/minute), which is a known limit rather than a fixed
+   defect.
+2. **Catch-up is bounded.** After a reconnect or a stalled connection, a viewer
+   can recover at most three minutes of missed QSOs rather than thirty, so the
+   burst of per-second deltas cannot exceed 100 rows per poll for long.
+
+Behaviour is covered by `bminfo/dashboard/tests/test_live_views.py`, whose
+assertions use absolute ages rather than the constant so they fail if the window
+grows as well as if it shrinks — verified by forcing the constant to 30 (4
+failures) and to 1 (6 failures). The consumer's query construction was split out
+of the `database_sync_to_async` adapter into `LiveQSOConsumer.queryset()` so the
+rule is testable without an event loop; `channels.testing` is unavailable here
+because `daphne` is not installed.
+
+**What the index and the narrower window do not fix.** The polling loop is still
+one query per connection per second. That is now cheap enough (0.3 ms against a
+~65-row index range) that 25 concurrent viewers cost about 7.5 ms of database
+time per second in total, so the documented target is comfortably met. It still
+does not scale linearly — a shared poller publishing to a channel layer, or
+`LISTEN/NOTIFY`, would turn N queries per second into one. Recorded under
+"Scalability" as the next step for that path, not as a defect.
 
 ---
 
