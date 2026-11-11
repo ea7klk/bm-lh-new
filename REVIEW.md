@@ -457,17 +457,17 @@ from 30 minutes to 3, defined once as `LIVE_WINDOW_MINUTES` in
 `bminfo/dashboard/utils.py` and read by both the websocket consumer and
 `/api/live-qsos/`, so the two live endpoints cannot drift apart.
 
-Production holds 804 QSOs in the last 30 minutes and 65 in the last 3 — the
-window change is therefore a **12× reduction in the row range each poll can
-consider**, though the index already made the query sub-millisecond, so this is
-not a latency win: the 3-minute query measures 0.55–0.66 ms against 0.31 ms for
-the 30-minute one, a difference that is planning noise on a sub-millisecond
-query. The real effects are:
+Production held 804 QSOs in the last 30 minutes and 65–75 in the last 3 at the
+time of measurement — the window change is therefore a **12× reduction in the
+row range each poll can consider**, though the index already made the query
+sub-millisecond, so this is not a latency win: the 3-minute query measures
+0.55–0.66 ms against 0.31 ms for the 30-minute one, a difference that is
+planning noise on a sub-millisecond query. The real effects are:
 
 1. **The initial snapshot is no longer stale.** `send_snapshot()` orders
    ascending and caps at 100 rows, so a 30-minute window with 804 QSOs returned
    the *oldest* hundred — roughly QSOs from 26–30 minutes ago — as the "live"
-   view. With 65 rows in the window the snapshot is complete. The underlying
+   view. With 65–75 rows in the window the snapshot is complete. The underlying
    truncation still exists for windows holding more than 100 QSOs (sustained
    traffic above ~33 QSOs/minute), which is a known limit rather than a fixed
    defect.
@@ -483,9 +483,21 @@ of the `database_sync_to_async` adapter into `LiveQSOConsumer.queryset()` so the
 rule is testable without an event loop; `channels.testing` is unavailable here
 because `daphne` is not installed.
 
+**Verified in production after deploy (v1.2.7).** `LIVE_WINDOW_MINUTES` resolves
+to 3 inside the running pod, and both live paths were exercised against
+production data with an authenticated client:
+
+```text
+consumer.queryset()   71 rows   oldest 12:13:47Z  lookback 2.97 min  ascending
+/api/live-qsos/       73 rows   oldest 12:13:54Z  lookback 2.93 min  descending
+```
+
+Neither path returns anything older than the window, and the ordering each
+consumer relies on is unchanged.
+
 **What the index and the narrower window do not fix.** The polling loop is still
 one query per connection per second. That is now cheap enough (0.3 ms against a
-~65-row index range) that 25 concurrent viewers cost about 7.5 ms of database
+~70-row index range) that 25 concurrent viewers cost about 7.5 ms of database
 time per second in total, so the documented target is comfortably met. It still
 does not scale linearly — a shared poller publishing to a channel layer, or
 `LISTEN/NOTIFY`, would turn N queries per second into one. Recorded under
@@ -966,6 +978,7 @@ production-density copy.
 | `first()` for `firstQsoAt` | one extra range scan | one extra range scan | |
 | **Live-QSO poll (H5)** — before | 168 ms | **859 ms** | full table scan, every second per open page |
 | Live-QSO poll (H5) — **after `qsos_stop_idx`** | **0.100 ms** | **0.308 ms** | index scan; deployed and verified in v1.2.6 |
+| Live-QSO poll — **3-minute window (v1.2.7)** | 0.55–0.66 ms | 71–73 rows per poll | fewer rows, complete snapshot; not a latency win |
 | Admin data-quality scan (M1) | — | 91.5 s | every maintenance page view |
 
 The dashboard issues **six SQL statements** per request, of which four scan the
