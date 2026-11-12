@@ -331,7 +331,7 @@
                 }
               }
             ],
-            "image": "ghcr.io/ea7klk/bminfo-new:v1.2.10@sha256:56a17d0a8ca81b54b984841815600d65592764fa4f2afd73c23323914a4b8659",
+            "image": "ghcr.io/ea7klk/bminfo-new:v1.2.11@sha256:b7ef20509b6b777958a3ff223b87867d7d08161b6915cc2e333591d0e80defce",
             "imagePullPolicy": "IfNotPresent",
             "name": "web",
             "ports": [
@@ -639,7 +639,7 @@
                     }
                   }
                 ],
-                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.10@sha256:56a17d0a8ca81b54b984841815600d65592764fa4f2afd73c23323914a4b8659",
+                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.11@sha256:b7ef20509b6b777958a3ff223b87867d7d08161b6915cc2e333591d0e80defce",
                 "imagePullPolicy": "IfNotPresent",
                 "name": "purge-unverified-users",
                 "resources": {
