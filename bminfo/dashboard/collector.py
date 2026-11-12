@@ -121,22 +121,36 @@ class StoreResult:
     raw_written: bool = False
     qso_written: bool = False
     talkgroup_created: bool = False
+    raw_inserted: bool = False
+    qso_inserted: bool = False
 
     def __bool__(self) -> bool:
         return self.qso_written
 
     @property
     def rows_written(self) -> int:
-        """Collected rows written: the raw event plus any QSO.
-
-        Talkgroup catalogue rows are reference data rather than collected
-        events, so they are excluded from the throughput count.
-        """
+        """Collected rows written, including updates of duplicate deliveries."""
         return int(self.raw_written) + int(self.qso_written)
+
+    @property
+    def rows_inserted(self) -> int:
+        """New rows added: the raw event plus any QSO.
+
+        LastHeard delivers the same event more than once — on several callback
+        threads, and again after a reconnect — and each delivery updates the
+        existing row. Counting writes therefore runs several times higher than
+        the number of rows the table actually gains: about 1M writes a day
+        against 130k archived rows. This counts only true inserts, so the
+        progress log reflects how much data is being added.
+
+        Talkgroup catalogue rows are reference data, not collected events, so
+        they are excluded.
+        """
+        return int(self.raw_inserted) + int(self.qso_inserted)
 
 
 class WriteCounter:
-    """Counts rows written since the collector started.
+    """Counts new rows inserted since the collector started.
 
     Logs a running total every ``step`` rows so an operator can tell at a glance
     that ingestion is still moving, without enabling DEBUG. The count is reset
@@ -163,7 +177,7 @@ class WriteCounter:
         return self._step
 
     def add(self, written: int) -> int | None:
-        """Record ``written`` rows; return the new total if a step was crossed."""
+        """Record ``written`` new rows; return the total if a step was crossed."""
         if written <= 0:
             return None
         with self._lock:
@@ -173,7 +187,7 @@ class WriteCounter:
             crossed = total // self._step > previous // self._step
         if crossed:
             logger.info(
-                "collector progress: %d rows written since start", total
+                "collector progress: %d rows inserted since restart", total
             )
             return total
         return None
@@ -192,7 +206,7 @@ def store_event(payload, threshold, exclude_talkgroup, raw_threshold=None) -> St
     if values["event_type"].casefold() == "session-stop" and values["start_at"] is not None and values["stop_at"] is not None:
         if (values["stop_at"] - values["start_at"]).total_seconds() < raw_threshold:
             return StoreResult()
-    RawEvent.objects.update_or_create(
+    _, raw_inserted = RawEvent.objects.update_or_create(
         payload_hash=_payload_hash(payload),
         defaults={
             "session_id": values["session_id"],
@@ -204,7 +218,7 @@ def store_event(payload, threshold, exclude_talkgroup, raw_threshold=None) -> St
         },
     )
     # The raw event is recorded from here on.
-    raw = StoreResult(raw_written=True)
+    raw = StoreResult(raw_written=True, raw_inserted=raw_inserted)
     if values["event_type"].casefold() != "session-stop":
         return raw
     if values["start_at"] is None or values["stop_at"] is None:
@@ -238,6 +252,10 @@ def store_event(payload, threshold, exclude_talkgroup, raw_threshold=None) -> St
     # insert race when two transactions observe the missing primary key at
     # the same time. ON CONFLICT makes the session-id uniqueness guarantee
     # atomic at PostgreSQL level.
+    # bulk_create with ON CONFLICT cannot report whether it inserted or updated,
+    # so newness is checked first. The upsert below still guarantees correctness
+    # under a race; this only affects what the counter reports.
+    qso_inserted = not QSO.objects.filter(session_id=values["session_id"]).exists()
     QSO.objects.bulk_create(
         [
             QSO(
@@ -289,7 +307,10 @@ def store_event(payload, threshold, exclude_talkgroup, raw_threshold=None) -> St
         ],
         unique_fields=["session_id"],
     )
-    return StoreResult(raw_written=True, qso_written=True, talkgroup_created=talkgroup_created)
+    return StoreResult(
+        raw_written=True, qso_written=True, talkgroup_created=talkgroup_created,
+        raw_inserted=raw_inserted, qso_inserted=qso_inserted,
+    )
 
 
 def sync_talkgroups(url, *, force=False):
@@ -379,7 +400,7 @@ def run_collector(stop_event, connected_event):
             close_old_connections()
             with transaction.atomic():
                 result = store_event(payload, threshold, exclude_talkgroup, raw_threshold)
-            written = result.rows_written
+            written = result.rows_inserted
             if written:
                 logger.debug("stored event: %d row(s)", written)
                 counter.add(written)

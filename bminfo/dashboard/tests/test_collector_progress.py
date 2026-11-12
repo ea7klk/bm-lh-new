@@ -40,8 +40,8 @@ class WriteCounterTests(SimpleTestCase):
 
         self.assertEqual(counter.total, 250)
         self.assertEqual(len(messages), 2, messages)
-        self.assertIn("100 rows written since start", messages[0])
-        self.assertIn("200 rows written since start", messages[1])
+        self.assertIn("100 rows inserted since restart", messages[0])
+        self.assertIn("200 rows inserted since restart", messages[1])
 
     def test_logs_exactly_at_multiples_and_not_between_them(self):
         counter = WriteCounter()
@@ -54,7 +54,7 @@ class WriteCounterTests(SimpleTestCase):
 
         with self.assertLogs("dashboard.collector", level="INFO") as captured:
             counter.add(1)
-        self.assertIn("100 rows written since start", captured.output[0])
+        self.assertIn("100 rows inserted since restart", captured.output[0])
 
         for _ in range(99):
             counter.add(1)
@@ -63,7 +63,7 @@ class WriteCounterTests(SimpleTestCase):
 
         with self.assertLogs("dashboard.collector", level="INFO") as captured:
             counter.add(1)
-        self.assertIn("200 rows written since start", captured.output[0])
+        self.assertIn("200 rows inserted since restart", captured.output[0])
 
     def test_counts_are_cumulative(self):
         counter = WriteCounter()
@@ -79,7 +79,7 @@ class WriteCounterTests(SimpleTestCase):
 
         self.assertEqual(result, 250)
         self.assertEqual(len(captured.records), 1)
-        self.assertIn("250 rows written", captured.output[0])
+        self.assertIn("250 rows inserted", captured.output[0])
 
     def test_zero_and_negative_writes_are_ignored(self):
         counter = WriteCounter()
@@ -161,6 +161,7 @@ class StoreEventRowCountTests(TestCase):
     def test_a_completed_session_writes_two_rows(self):
         result = store_event(self.payload(), **CONFIGURED)
 
+        self.assertEqual(result.rows_inserted, 2)
         self.assertEqual(result.rows_written, 2)
         self.assertTrue(result, "a stored QSO must stay truthy")
         self.assertEqual(RawEvent.objects.count(), 1)
@@ -169,21 +170,21 @@ class StoreEventRowCountTests(TestCase):
     def test_a_non_session_stop_writes_only_the_raw_event(self):
         result = store_event(self.payload(Event="Session-Start"), **CONFIGURED)
 
-        self.assertEqual(result.rows_written, 1)
+        self.assertEqual(result.rows_inserted, 1)
         self.assertFalse(result, "the boolean still means 'QSO written'")
         self.assertEqual(QSO.objects.count(), 0)
 
     def test_a_kerchunk_writes_nothing(self):
         result = store_event(self.payload(Start=1000.0, Stop=1000.5), **CONFIGURED)
 
-        self.assertEqual(result.rows_written, 0)
+        self.assertEqual(result.rows_inserted, 0)
         self.assertFalse(result)
         self.assertEqual(RawEvent.objects.count(), 0)
 
     def test_an_excluded_talkgroup_writes_only_the_raw_event(self):
         result = store_event(self.payload(DestinationID=9), **CONFIGURED)
 
-        self.assertEqual(result.rows_written, 1)
+        self.assertEqual(result.rows_inserted, 1)
         self.assertEqual(QSO.objects.count(), 0)
 
     def test_a_service_destination_writes_only_the_raw_event(self):
@@ -191,13 +192,13 @@ class StoreEventRowCountTests(TestCase):
 
         result = store_event(self.payload(DestinationID=next(iter(NON_QSO_DESTINATION_IDS))), **CONFIGURED)
 
-        self.assertEqual(result.rows_written, 1)
+        self.assertEqual(result.rows_inserted, 1)
         self.assertEqual(QSO.objects.count(), 0)
 
     def test_a_missing_destination_name_writes_only_the_raw_event(self):
         result = store_event(self.payload(DestinationID=999, DestinationName=None), **CONFIGURED)
 
-        self.assertEqual(result.rows_written, 1)
+        self.assertEqual(result.rows_inserted, 1)
         self.assertEqual(QSO.objects.count(), 0)
 
     def test_a_known_talkgroup_supplies_the_missing_name(self):
@@ -206,7 +207,7 @@ class StoreEventRowCountTests(TestCase):
 
         result = store_event(self.payload(DestinationName=None), **CONFIGURED)
 
-        self.assertEqual(result.rows_written, 2)
+        self.assertEqual(result.rows_inserted, 2)
         self.assertFalse(result.talkgroup_created, "the catalogue row already existed")
         self.assertEqual(QSO.objects.get().destination_name, "Spain")
 
@@ -217,3 +218,24 @@ class StoreEventRowCountTests(TestCase):
         # The catalogue row is reference data, so the throughput count is the
         # raw event plus the QSO only.
         self.assertEqual(result.rows_written, 2)
+
+    def test_a_duplicate_delivery_inserts_nothing(self):
+        payload = self.payload()
+
+        first = store_event(payload, **CONFIGURED)
+        second = store_event(payload, **CONFIGURED)
+
+        self.assertEqual(first.rows_inserted, 2)
+        # The second delivery updates the same two rows; nothing is added, so
+        # the progress counter must not move.
+        self.assertEqual(second.rows_inserted, 0)
+        self.assertEqual(second.rows_written, 2, "it was still written")
+        self.assertTrue(second, "a QSO was still stored")
+
+    def test_insert_and_write_diverge_only_for_duplicates(self):
+        payload = self.payload()
+        first = store_event(payload, **CONFIGURED)
+        second = store_event(payload, **CONFIGURED)
+
+        self.assertEqual(first.rows_inserted, first.rows_written)
+        self.assertLess(second.rows_inserted, second.rows_written)

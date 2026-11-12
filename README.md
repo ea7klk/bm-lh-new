@@ -135,17 +135,23 @@ missed. The collector heartbeat advances only while connected, so
 `/status/` becomes degraded after a sustained disconnection (90 seconds with
 the default heartbeat interval). `/health/` remains the web liveness check.
 
-Every 100 collected rows the collector logs a running total since the process
-started, so ingestion can be confirmed without enabling DEBUG:
+Every 100 new rows the collector logs a running total since the process started,
+so ingestion can be confirmed without enabling DEBUG:
 
 ```text
-INFO dashboard.collector collector progress: 3400 rows written since start
+INFO dashboard.collector collector progress: 3400 rows inserted since restart
 ```
 
-A row is one raw event plus any QSO it produced, so a completed session counts
-two and an event filtered out before storage counts nothing. Talkgroup catalogue
-rows are reference data and are not counted. The total resets only on restart;
-reconnects inside the retry loop do not reset it.
+- **A row** is one raw event plus any QSO it produced, so a completed session
+  counts two and an event filtered out before storage counts nothing.
+- **Insertions, not writes.** LastHeard delivers the same event more than once
+  (on several callback threads, and again after a reconnect), and each delivery
+  updates the existing row. Counting writes runs about seven times higher than
+  the rows the table actually gains — roughly 1M writes a day against 130k
+  archived rows — so only genuine inserts are counted.
+- **Talkgroup catalogue rows** are reference data and are not counted.
+- **Since restart**: the counter lives for the whole collector run, so reconnects
+  inside the retry loop do not reset it.
 
 ## Donation reminders
 
