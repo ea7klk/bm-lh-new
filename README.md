@@ -101,6 +101,21 @@ reads the manifest and fails if a CronJob names a command that no longer exists,
 if the schedules lose their order, or if the collector is put back into the web
 deployment.
 
+**Lifespan.** Uvicorn opens every worker with the ASGI lifespan handshake.
+Django and Channels implement neither half — `ASGIHandler` rejects any scope that
+is not HTTP and `ProtocolTypeRouter` raises for a scope type it has no mapping
+for — so `config/asgi.py` answers it directly with `lifespan_application`, which
+the router maps as `"lifespan"`. Without that mapping Uvicorn logs
+`ASGI 'lifespan' protocol appears unsupported` on each worker start and, because
+it records the failure, skips the shutdown handshake entirely, so no application
+shutdown hook could run. There is no startup work today: migrations and
+`collectstatic` run in `entrypoint.sh` before gunicorn starts. If startup work is
+ever added, it belongs in that coroutine, reporting failure with
+`lifespan.startup.failed` so a misconfigured pod fails its probe with a reason
+instead of serving traffic in a broken state. `LifespanTests` in
+`test_runtime_topology.py` drives the real `application` object, wrapper
+included, so the mapping cannot be dropped again unnoticed.
+
 ## Run locally
 
 Python 3.12 is recommended. Start PostgreSQL, then install the Django

@@ -7,6 +7,7 @@ the other fails the build rather than silently reverting the architecture.
 """
 
 import ast
+import asyncio
 import pathlib
 import re
 
@@ -110,6 +111,67 @@ class TopologyTests(SimpleTestCase):
         self.assertIn("bminfo-object-store", sources)
         # Optional so the schedule does not fail before the credentials exist.
         self.assertTrue(sources["bminfo-object-store"])
+
+
+class LifespanTests(SimpleTestCase):
+    """The ASGI application must answer the lifespan protocol.
+
+    Uvicorn opens every worker with a lifespan handshake. Neither Django nor
+    Channels implements it -- ``ASGIHandler`` rejects any scope that is not HTTP
+    and ``ProtocolTypeRouter`` raises for a scope type it has no mapping for --
+    so an unmapped scope surfaced as "ASGI 'lifespan' protocol appears
+    unsupported" on each worker start. Uvicorn also records that exception in
+    ``error_occurred`` and then returns early from ``shutdown()``, so the same
+    gap silently disabled the shutdown handshake.
+
+    These tests drive the real ``application`` object, wrapper included, rather
+    than the coroutine alone: the value that matters is what Uvicorn is handed.
+    """
+
+    def drive(self, incoming):
+        """Feed lifespan messages through the deployed application."""
+        from config.asgi import application
+
+        sent = []
+
+        async def receive():
+            return incoming.pop(0) if incoming else {"type": "lifespan.shutdown"}
+
+        async def send(message):
+            sent.append(message["type"])
+
+        asyncio.run(application({"type": "lifespan"}, receive, send))
+        return sent
+
+    def test_router_maps_the_lifespan_scope(self):
+        from config.asgi import application
+
+        # ASGIStaticFilesHandler wraps the router but only intercepts HTTP, so
+        # the router underneath is where the mapping has to exist.
+        router = application.application
+        self.assertIn("lifespan", router.application_mapping)
+
+    def test_startup_and_shutdown_are_acknowledged(self):
+        sent = self.drive([{"type": "lifespan.startup"}, {"type": "lifespan.shutdown"}])
+        self.assertEqual(
+            sent,
+            ["lifespan.startup.complete", "lifespan.shutdown.complete"],
+        )
+
+    def test_shutdown_returns_to_the_server(self):
+        """``shutdown()`` returning is what lets the worker exit cleanly."""
+        # A hang here would be an unreturned coroutine, not a failure; the
+        # server would time out and kill the worker.
+        sent = self.drive([{"type": "lifespan.shutdown"}])
+        self.assertEqual(sent, ["lifespan.shutdown.complete"])
+
+    def test_other_scope_types_still_reach_their_handlers(self):
+        """Adding the lifespan mapping must not swallow http or websocket."""
+        from config.asgi import application
+
+        mapping = application.application.application_mapping
+        self.assertIn("http", mapping)
+        self.assertIn("websocket", mapping)
 
 
 class EntrypointTests(SimpleTestCase):

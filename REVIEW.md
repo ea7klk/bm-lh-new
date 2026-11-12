@@ -52,6 +52,13 @@ document** — every finding below is recorded, not applied.
 - Assessed whether `raw_events` belongs in PostgreSQL at all; that assessment was
   then implemented as day-per-object archiving to Silo (`OBJECT-STORAGE.md`),
   which also settles the partitioning question in "raw_events retention".
+- Investigated the `ASGI 'lifespan' protocol appears unsupported` warning from
+  the running web deployment by probing the application object directly, reading
+  the Uvicorn lifespan implementation, and reproducing the handshake against the
+  local stack. The warning was the visible half of a real defect: Uvicorn's
+  `LifespanOn.shutdown()` returns early once `error_occurred` is set, so the
+  shutdown handshake had never run. Fixed in `config/asgi.py` and covered by
+  `LifespanTests` (see "The ASGI lifespan handshake").
 
 Every index and query change above was measured on a production-density copy
 before deploying, then confirmed against production afterwards: `qsos_stop_idx`
@@ -878,10 +885,32 @@ ImproperlyConfigured` away.
   regress.
 - `views.py` exists only as a compatibility shim re-exporting names from four
   modules. It invites imports from a module that owns no behaviour.
-- The collector, the web server, and their shared lifecycle are one container
-  with one entrypoint: a web deploy restarts ingestion, and the collector's
-  connection budget is implicitly part of the web pod's process group. It works
-  at this size; it means "deploy" and "restart collection" are the same action.
+- **The collector, the web server and their maintenance threads no longer share a
+  container or a lifecycle (v1.2.19).** The history is worth keeping because it
+  explains the manifest: a single pod used to hold the collector as a child
+  process of the entrypoint, so "deploy" and "restart collection" were the same
+  action and the collector's connection budget was implicitly part of the web
+  pod's process group. The split above removed both properties; what remains is
+  the advisory lock on migrations, which is what makes independent pod starts
+  safe.
+- **The ASGI lifespan handshake was unimplemented.** Uvicorn sends
+  `lifespan.startup` to every worker and waits for `lifespan.startup.complete`.
+  Django's `ASGIHandler` rejects any scope that is not HTTP
+  (`Django can only handle ASGI/HTTP connections, not lifespan.`) and
+  `ProtocolTypeRouter` raises `No application configured for scope type
+  'lifespan'` for a type it has no mapping, so each worker logged
+  `ASGI 'lifespan' protocol appears unsupported` and carried on serving. The
+  warning was accurate and easy to dismiss; the consequence was not. Uvicorn
+  catches the exception in `LifespanOn.main()`, sets `error_occurred`, and then
+  `LifespanOn.shutdown()` begins with `if self.error_occurred: return` — so the
+  shutdown handshake was skipped on every worker, and any application shutdown
+  hook would silently never run. `config/asgi.py` now maps `"lifespan"` to a
+  coroutine that acknowledges both halves. Verified under gunicorn with three
+  Uvicorn workers: zero unsupported lines, three `Application startup complete`,
+  three `Application shutdown complete` on `SIGTERM`, and 200 from both `/health/`
+  and the dashboard. Nothing consumes the startup half today — migrations and
+  `collectstatic` run in `entrypoint.sh` before gunicorn — so the change buys a
+  truthful log and a working shutdown path rather than new behaviour.
 - `QSO.talkgroup` uses `on_delete=PROTECT` with `db_constraint=False`
   (`models.py:91-100`). Django will refuse to delete a referenced talkgroup;
   PostgreSQL will not, so any raw-SQL or manual delete can orphan rows and the
