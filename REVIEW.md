@@ -1028,10 +1028,10 @@ Each entry states what was measured, not what is hoped for.
    per worker, or Redis shared across workers — the latter is required the
    moment there is more than one replica).
 3. ~~**Single-pass query rewrite**~~ — **done in v1.2.13** (see "Single-pass
-dashboard query" below). Measured on
-   production after the fact: **3,354 → 2,058 ms, 1.63×**, five round trips down
-   to one. The 2.1× originally projected here was optimistic; H6 records where
-   the difference went.
+   dashboard query" below). Measured after the fact: **3,354 → 2,058 ms of
+   database time (1.63×)**, and **4.3 → 2.0 s end to end (2.1×)** — five round
+   trips down to one, plus no longer shipping 245k timestamps to Python for the
+   histogram.
 4. **Covering index `(start_at DESC) INCLUDE (source_call, destination_id,
    duration_ms)` — about 9% end-to-end** (1.4 → 1.5 req/s; summary 619 → 541 ms).
    Modest, because the distinct-count sort dominates once heap access is
@@ -1093,10 +1093,16 @@ introduces a subtle difference; instead the statement is borrowed wholesale.
 
 **1.63× less database time, and five round trips down to one.**
 
-**The 2.1× projected earlier was optimistic.** That estimate came from a
-prototype that selected only the aggregate columns and omitted the earliest
-timestamp, the 24-hour count and the talkgroup join. Two changes recovered most
-of the gap:
+**End to end it is 2.1×.** Over HTTPS the same endpoint went from
+**4.2–4.3 s to 1.95–2.07 s** for the week range. That is where the figure this
+document originally projected shows up: the database timing excludes the work
+the old path did in Python, pulling every `start_at` in the range (245k values)
+over the wire to bucket the histogram.
+
+**The 2.1× projected earlier was optimistic as a database figure.** That estimate
+came from a prototype that selected only the aggregate columns and omitted the
+earliest timestamp, the 24-hour count and the talkgroup join. Two changes
+recovered most of the gap:
 
 - The CTE initially carried the four wide talkgroup text columns so the top-N
   list would not need a join. At 250k rows that nearly doubled the materialised
