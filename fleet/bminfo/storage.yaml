@@ -1,108 +1,9 @@
 {
   "apiVersion": "v1",
-  "kind": "PersistentVolume",
-  "metadata": {
-    "name": "bminfo-v-170642bc4e016938",
-    "annotations": {
-      "pv.kubernetes.io/bound-by-controller": "yes"
-    }
-  },
-  "spec": {
-    "accessModes": [
-      "ReadWriteOnce"
-    ],
-    "capacity": {
-      "storage": "1Gi"
-    },
-    "claimRef": {
-      "apiVersion": "v1",
-      "kind": "PersistentVolumeClaim",
-      "name": "v-170642bc4e016938",
-      "namespace": "bminfo",
-      "uid": "69eafbab-ae6b-4a5c-95be-d7829dba2859"
-    },
-    "local": {
-      "path": "/opt/stacks/bminfo/pgadmin_data"
-    },
-    "nodeAffinity": {
-      "required": {
-        "nodeSelectorTerms": [
-          {
-            "matchExpressions": [
-              {
-                "key": "kubernetes.io/hostname",
-                "operator": "In",
-                "values": [
-                  "spainip-k3s"
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    "persistentVolumeReclaimPolicy": "Retain",
-    "volumeMode": "Filesystem"
-  }
-}
----
-{
-  "apiVersion": "v1",
-  "kind": "PersistentVolume",
-  "metadata": {
-    "name": "bminfo-v-f5b2c398ce5127fa",
-    "annotations": {
-      "pv.kubernetes.io/bound-by-controller": "yes"
-    }
-  },
-  "spec": {
-    "accessModes": [
-      "ReadWriteOnce"
-    ],
-    "capacity": {
-      "storage": "1Gi"
-    },
-    "claimRef": {
-      "apiVersion": "v1",
-      "kind": "PersistentVolumeClaim",
-      "name": "v-f5b2c398ce5127fa",
-      "namespace": "bminfo",
-      "uid": "6c9ec093-4bb4-42af-8878-481da66402fd"
-    },
-    "local": {
-      "path": "/opt/stacks/bminfo/django_postgres_data"
-    },
-    "nodeAffinity": {
-      "required": {
-        "nodeSelectorTerms": [
-          {
-            "matchExpressions": [
-              {
-                "key": "kubernetes.io/hostname",
-                "operator": "In",
-                "values": [
-                  "spainip-k3s"
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    "persistentVolumeReclaimPolicy": "Retain",
-    "volumeMode": "Filesystem"
-  }
-}
----
-{
-  "apiVersion": "v1",
   "kind": "PersistentVolumeClaim",
   "metadata": {
     "name": "v-170642bc4e016938",
-    "namespace": "bminfo",
-    "annotations": {
-      "pv.kubernetes.io/bind-completed": "yes"
-    }
+    "namespace": "bminfo"
   },
   "spec": {
     "accessModes": [
@@ -110,12 +11,11 @@
     ],
     "resources": {
       "requests": {
-        "storage": "1Gi"
+        "storage": "2Gi"
       }
     },
-    "storageClassName": "",
-    "volumeMode": "Filesystem",
-    "volumeName": "bminfo-v-170642bc4e016938"
+    "storageClassName": "retained-local-path",
+    "volumeMode": "Filesystem"
   }
 }
 ---
@@ -124,10 +24,7 @@
   "kind": "PersistentVolumeClaim",
   "metadata": {
     "name": "v-f5b2c398ce5127fa",
-    "namespace": "bminfo",
-    "annotations": {
-      "pv.kubernetes.io/bind-completed": "yes"
-    }
+    "namespace": "bminfo"
   },
   "spec": {
     "accessModes": [
@@ -135,11 +32,10 @@
     ],
     "resources": {
       "requests": {
-        "storage": "1Gi"
+        "storage": "20Gi"
       }
     },
-    "storageClassName": "",
-    "volumeMode": "Filesystem",
-    "volumeName": "bminfo-v-f5b2c398ce5127fa"
+    "storageClassName": "retained-local-path",
+    "volumeMode": "Filesystem"
   }
 }

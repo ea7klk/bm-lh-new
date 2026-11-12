@@ -69,17 +69,23 @@ bootstrap, and shared storage remain in
 
 ### Persistent storage
 
-The bundle owns both persistent volumes, and their identities are load-bearing:
+The bundle owns both persistent claims, and their identities are load-bearing:
 recreating or renaming a claim orphans the data on the node.
 
-| Application | PVC in `bminfo` | PV | Node path |
+| Application | PVC in `bminfo` | StorageClass | Requested |
 | --- | --- | --- | --- |
-| PostgreSQL | `v-f5b2c398ce5127fa` | `bminfo-v-f5b2c398ce5127fa` | `/opt/stacks/bminfo/django_postgres_data` |
-| pgAdmin | `v-170642bc4e016938` | `bminfo-v-170642bc4e016938` | `/opt/stacks/bminfo/pgadmin_data` |
+| PostgreSQL | `v-f5b2c398ce5127fa` | `retained-local-path` | 20Gi |
+| pgAdmin | `v-170642bc4e016938` | `retained-local-path` | 2Gi |
 
-Both PVs use the empty storage class, are bound to `spainip-k3s` by node
-affinity, and carry a `Retain` reclaim policy. They were adopted in place; the
-claims keep their original names deliberately.
+Both claims are provisioned by the local-path provisioner under
+`/var/lib/rancher/k3s/storage/` and keep their original names deliberately, so
+the Deployments did not change during the migration out of the hand-built
+`/opt/stacks` volumes. `local-path` does not support expansion, which is why the
+request is sized well above current usage.
+
+`retained-local-path` is a class defined in the `infra` repository, identical to
+`local-path` except for `reclaimPolicy: Retain`. Do not switch these claims to the
+built-in `local-path` class: deleting a claim there destroys the data directory.
 
 ### Secrets
 
