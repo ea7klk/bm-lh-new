@@ -207,7 +207,9 @@ ID so reconnects and duplicate deliveries do not duplicate transmissions.
 Raw events older than **today 00:00 UTC** are compressed one file per UTC day and
 moved to the Silo bucket `bminfo-raw`, then deleted from PostgreSQL. At least one
 full day therefore always stays in the table, and the bucket expires objects after
-365 days. `qsos` can be regenerated from the table plus the archive at any time.
+365 days. Each archive pass then compacts `raw_events` once to return the disk
+that the deletes freed (`VACUUM FULL`, briefly blocking writes); see
+`OBJECT-STORAGE.md`. `qsos` can be regenerated from the table plus the archive at any time.
 See [OBJECT-STORAGE.md](OBJECT-STORAGE.md) for the layout, the bucket policy and
 the access-key procedure.
 

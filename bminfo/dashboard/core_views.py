@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from time import perf_counter
 
 from django.db.models import Q
@@ -9,9 +8,8 @@ from django.shortcuts import render
 from django.utils import timezone
 
 from .dashboard_stats import isoformat_or_none, load_dashboard_stats
-from .i18n import locale_from_request
 from .models import QSO, Talkgroup
-from .utils import AUTHENTICATED_RANGES, histogram_bucket_seconds, histogram_label, range_bounds, restricted_request
+from .utils import histogram_bucket_seconds, histogram_label, range_bounds, restricted_request
 
 
 def filtered_qsos(request, *, authenticated_only=False):

@@ -176,6 +176,9 @@ the old account with `mcli admin user svcacct rm silo <access-key>`.
 | `RAW_ARCHIVE_PREFIX` | `raw-events` | Key prefix inside the bucket. |
 | `RAW_ARCHIVE_INTERVAL_SECONDS` | `3600` | How often the background loop looks for work. |
 | `RAW_ARCHIVE_ENABLED` | `true` | Set false to disable the loop; manual runs still work. |
+| `RAW_ARCHIVE_COMPACT` | `true` | Reclaim disk after a pass that evicted days. |
+| `RAW_COMPACT_MIN_ROWS` | `20000` | Only compact when the pass deleted at least this many rows. |
+| `RAW_COMPACT_LOCK_TIMEOUT_SECONDS` | `30` | Give up rather than queue behind another session. |
 
 Archiving requires **all** of endpoint, bucket and both keys. If any is missing
 the collector logs the reason once and the loop exits; the admin page shows the
@@ -216,11 +219,36 @@ table.
 
 ### Deletion and disk space
 
-Rows are deleted in batches so no single transaction is long. `DELETE` does not
-return space to the filesystem; the freed space is reused by new inserts, which
-is what keeps the table from growing. Storage does not shrink immediately. To
-reclaim it, `VACUUM FULL` or `pg_repack` is required and takes an exclusive lock;
-do that only if you need the bytes back, not as routine maintenance.
+Rows are deleted in batches so no single transaction is long. `DELETE` frees
+pages for reuse but **never shrinks the file**, so after archiving a long backlog
+the table keeps its old size on disk. At the first production run the table had
+dropped from 12.98M to 11.8M rows while remaining 21 GB.
+
+The archive pass therefore ends with **one compaction**, which runs
+`VACUUM (FULL, ANALYZE, PARALLEL 0) raw_events` and returns the space.
+
+- **Once per pass, never per day.** `VACUUM FULL` rewrites the whole table, so
+  running it after each of a hundred archived days would cost far more than the
+  disk it saves. A single compaction runs after the pass finishes.
+- **Only when something was evicted.** It runs when the pass deleted at least
+  `RAW_COMPACT_MIN_ROWS` rows (default 20,000), and is skipped for a small table.
+- **Measured cost.** On a table of the same row width, 1,736 MB holding 86k live
+  rows compacted in **3.4 s**, down to **75 MB**. The cost is dominated by reading
+  the existing heap, so the one-off compaction of a 13 GB backlog takes tens of
+  seconds, while steady state — one or two days of rows — is under a second. In
+  the local end-to-end run: 85 MB → 8 KB in 0.19 s.
+- **It blocks writes while it runs.** `VACUUM FULL` takes an `ACCESS EXCLUSIVE`
+  lock, so the collector's inserts wait for its duration. That is why it is
+  batched into one occurrence per pass rather than run per day, and why
+  `RAW_COMPACT_LOCK_TIMEOUT_SECONDS` (default 30) makes it give up rather than
+  queue behind another session. A lock timeout is recorded in the run detail and
+  the next pass retries; it never fails the archive.
+- **Disable it** with `RAW_ARCHIVE_COMPACT=false`, or per run with
+  `archive_raw_events --no-compact`.
+
+`pg_repack` would avoid the lock but is not installed in the PostgreSQL image and
+would need a custom image plus `CREATE EXTENSION`; the lock window here is short
+enough that it is not worth it.
 
 ## Operating
 
@@ -230,7 +258,10 @@ do that only if you need the bytes back, not as routine maintenance.
   - an *archive status* panel showing the bucket, cutoff, pending days and rows,
     archived days, rows and size, the ten most recent archived days, and the
     state of the last archive and rebuild jobs;
-  - **Archive pending days now**, which runs the same pass in the background;
+  - the size `raw_events` occupies on disk, next to the archive totals;
+  - **Archive pending days now**, which runs the same pass in the background,
+    compaction included;
+  - **Compact raw_events now**, to reclaim space without archiving anything;
   - **Rebuild QSOs from raw events and archive**.
 - **CLI**:
 
@@ -240,6 +271,8 @@ do that only if you need the bytes back, not as routine maintenance.
   python manage.py archive_raw_events                  # archive everything eligible
   python manage.py archive_raw_events --day 2026-11-01 # one specific day
   python manage.py archive_raw_events --limit 3        # oldest three days
+  python manage.py archive_raw_events --no-compact     # skip the disk reclaim
+  python manage.py archive_raw_events --compact-only   # reclaim without archiving
   ```
 
   It exits non-zero if any day failed, and nothing is deleted for a failed day.
@@ -280,6 +313,7 @@ Reading months of archive back is slow: expect minutes per month of data. Use
 | `… reports N rows on the server, expected M` | a truncated or wrong object | nothing was deleted; re-run, the day is re-exported |
 | a day fails repeatedly | inspect `python manage.py archive_raw_events --day DATE` output | rows remain in the table until it succeeds |
 | pending days grow | the loop is disabled or storage is down | the admin panel shows pending count and oldest day |
+| `compaction did not run: … lock timeout` | another session held the table | nothing lost; the next pass retries, or use **Compact raw_events now** |
 
 Deleting a `raw_event_archives` row does **not** delete the object and does not
 bring rows back; it only makes the status page under-report. Restore by reading

@@ -88,6 +88,7 @@ def maintenance(request):
         "users": User.objects.only("id", "callsign", "email", "is_active").order_by("callsign"),
         "archive_job": jobs.last_run(MaintenanceRun.ARCHIVE),
         "rebuild_job": jobs.last_run(MaintenanceRun.REBUILD),
+        "compact_job": jobs.last_run(MaintenanceRun.COMPACT),
         "archived_days": RawEventArchive.objects.count(),
     })
 
@@ -145,9 +146,25 @@ def archive_now(request):
 
 
 @staff_member_required
+@require_http_methods(["POST"])
+def compact_raw_events(request):
+    """Run VACUUM FULL on raw_events to return disk after archiving."""
+    run, reason = jobs.start_job(MaintenanceRun.COMPACT, jobs.compact_job)
+    if run is None:
+        messages.error(request, f"Compaction not started: {reason}.")
+    else:
+        messages.success(
+            request,
+            "Compaction started in the background. It rewrites raw_events and briefly "
+            "blocks writes while it runs.",
+        )
+    return redirect("admin-maintenance")
+
+
+@staff_member_required
 def archive_status(request):
     """JSON: what is pending, what is archived, and the state of both jobs."""
-    from .archiver import archive_cutoff, pending_days
+    from .archiver import archive_cutoff, pending_days, relation_sizes
     from .object_store import configuration_problem
 
     cutoff = archive_cutoff()
@@ -191,8 +208,10 @@ def archive_status(request):
              "key": a.object_key, "archived_at": a.archived_at.isoformat()}
             for a in archives[:10]
         ],
+        "table": relation_sizes(),
         "archive_job": run_state(MaintenanceRun.ARCHIVE),
         "rebuild_job": run_state(MaintenanceRun.REBUILD),
+        "compact_job": run_state(MaintenanceRun.COMPACT),
     })
 
 

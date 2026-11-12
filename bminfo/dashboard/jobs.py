@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 _locks: dict[str, threading.Lock] = {
     MaintenanceRun.ARCHIVE: threading.Lock(),
     MaintenanceRun.REBUILD: threading.Lock(),
+    MaintenanceRun.COMPACT: threading.Lock(),
 }
 
 # A run older than this is treated as abandoned (the process died mid-job).
@@ -87,20 +88,44 @@ def start_job(kind: str, target, **kwargs) -> tuple[MaintenanceRun | None, str]:
 
 
 def archive_job(run: MaintenanceRun, *, dry_run: bool = False, limit: int | None = None) -> dict:
-    """Archive every eligible day, updating `run.detail` as it goes."""
+    """Archive every eligible day and reclaim disk, updating `run.detail`."""
     from .archiver import archive_pending
 
     summary = archive_pending(limit=limit, dry_run=dry_run)
     payload = summary.as_dict()
     run.detail = payload
-    run.message = (
+    message = (
         f"{payload['days_processed']} day(s): {payload['rows_archived']} rows archived, "
         f"{payload['rows_deleted']} deleted"
     )
+    compaction = payload.get("compaction") or {}
+    if compaction and not compaction.get("skipped"):
+        message += (
+            f"; compacted to {compaction['heap_after_bytes'] // 1048576} MB "
+            f"in {compaction['seconds']}s"
+        )
+    elif compaction.get("skipped"):
+        message += f"; no compaction ({compaction.get('reason')})"
     if dry_run:
-        run.message = f"dry run: {payload['days_processed']} day(s) pending"
+        message = f"dry run: {payload['days_processed']} day(s) pending"
+    run.message = message
     run.save(update_fields=["detail", "message"])
     return payload
+
+
+def compact_job(run: MaintenanceRun) -> dict:
+    """Reclaim disk in raw_events on its own, outside an archive pass."""
+    from .archiver import compact_raw_events
+
+    result = compact_raw_events(force=True)
+    run.detail = result
+    run.message = (
+        f"raw_events {result['heap_before_bytes'] // 1048576} MB -> "
+        f"{result['heap_after_bytes'] // 1048576} MB in {result['seconds']}s"
+        + (" (lock timeout, will retry)" if result.get("timed_out") else "")
+    )
+    run.save(update_fields=["detail", "message"])
+    return result
 
 
 def rebuild_job(run: MaintenanceRun, *, include_archive: bool = True, limit_days: int | None = None) -> dict:

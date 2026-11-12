@@ -229,7 +229,12 @@ class MaintenanceRun(models.Model):
 
     ARCHIVE = "archive"
     REBUILD = "rebuild"
-    KIND_CHOICES = [(ARCHIVE, "Archive raw events"), (REBUILD, "Rebuild QSOs")]
+    COMPACT = "compact"
+    KIND_CHOICES = [
+        (ARCHIVE, "Archive raw events"),
+        (REBUILD, "Rebuild QSOs"),
+        (COMPACT, "Compact raw events"),
+    ]
 
     RUNNING = "running"
     SUCCEEDED = "succeeded"

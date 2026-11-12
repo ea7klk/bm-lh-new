@@ -10,10 +10,20 @@
     object storage, then removed from the database. The bucket lifecycle expires objects after 365 days.
   </p>
   <table id="archiveSummary"><tbody><tr><td>Loading archive status…</td></tr></tbody></table>
-  <form method="post" action="/administration/archive/" onsubmit="return confirm('Archive every day older than today 00:00 UTC? This uploads to object storage and then deletes those rows from the database.')">
+  <form method="post" action="/administration/archive/" onsubmit="return confirm('Archive every day older than today 00:00 UTC? This uploads to object storage, deletes those rows, then compacts raw_events.')">
     {% csrf_token %}
     <button type="submit">Archive pending days now</button>
   </form>
+  <form method="post" action="/administration/compact/" style="margin-top:8px" onsubmit="return confirm('Compact raw_events? This rewrites the table to return disk space and briefly blocks writes.')">
+    {% csrf_token %}
+    <button type="submit">Compact raw_events now</button>
+  </form>
+  <p class="help" style="margin-top:8px">
+    Deleting archived rows frees pages for reuse but does not shrink the file. Compaction runs
+    <code>VACUUM FULL</code> once per archive pass to return the space, and holds an exclusive lock
+    while it rewrites the table. In steady state the table holds one or two days and this takes
+    under a second; the first run over a large backlog takes longer.
+  </p>
   <table id="archiveRecent" style="margin-top:12px"><tbody></tbody></table>
 </div>
 
@@ -50,6 +60,12 @@
         <td>{{ rebuild_job.status|default:"never run" }}</td>
         <td>{{ rebuild_job.message|default:"—" }}</td>
         <td>{{ rebuild_job.started_at|default:"—" }}</td>
+      </tr>
+      <tr>
+        <td>Compaction</td>
+        <td>{{ compact_job.status|default:"never run" }}</td>
+        <td>{{ compact_job.message|default:"—" }}</td>
+        <td>{{ compact_job.started_at|default:"—" }}</td>
       </tr>
     </tbody>
   </table>
@@ -91,6 +107,7 @@ function renderArchiveStatus() {
       ['Archived days', Number(data.archived_days).toLocaleString()],
       ['Archived rows', Number(data.archived_rows).toLocaleString()],
       ['Archived size', formatBytes(data.archived_bytes)],
+      ['raw_events on disk', data.table ? `${formatBytes(data.table.heap_bytes)} heap, ${formatBytes(data.table.total_bytes)} with indexes` : '—'],
     ];
     summary.innerHTML = rows.map(([k, v]) => `<tr><th style="width:38%">${k}</th><td>${v}</td></tr>`).join('');
 
@@ -103,7 +120,7 @@ function renderArchiveStatus() {
         '</tbody>';
     }
 
-    const active = (data.archive_job && data.archive_job.active) || (data.rebuild_job && data.rebuild_job.active);
+    const active = (data.archive_job && data.archive_job.active) || (data.rebuild_job && data.rebuild_job.active) || (data.compact_job && data.compact_job.active);
     if (active) setTimeout(renderArchiveStatus, 15000);
   }).catch(() => {
     document.getElementById('archiveSummary').innerHTML = '<tr><td>Unable to load archive status.</td></tr>';

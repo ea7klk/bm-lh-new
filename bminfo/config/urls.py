@@ -17,6 +17,7 @@ urlpatterns = [
     path("administration/rebuild-qsos/", admin_views.rebuild_qsos, name="admin-rebuild-qsos"),
     path("administration/archive/", admin_views.archive_now, name="admin-archive-now"),
     path("administration/archive/status/", admin_views.archive_status, name="admin-archive-status"),
+    path("administration/compact/", admin_views.compact_raw_events, name="admin-compact-raw-events"),
     path("administration/counts/<str:kind>/<int:months>/", admin_views.retention_counts, name="admin-retention-counts"),
     path("administration/qsos/<int:months>/", admin_views.clear_qsos, name="admin-clear-qsos"),
     path("administration/users/<int:user_id>/expire-sessions/", admin_views.expire_sessions, name="admin-expire-sessions"),

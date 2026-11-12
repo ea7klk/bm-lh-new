@@ -786,11 +786,12 @@ registration path when the existing row is an unverified signup.
   unconditionally. A password changed in the Django admin is silently reverted
   at the next restart. Intended for idempotent bootstrap; surprising in
   operation.
-- **L7. Retention deletes do not return disk.** `VACUUM (ANALYZE)` reclaims
-  space for reuse inside the table but never truncates it. Space is reused by
-  new inserts, so this is steady-state-fine, but "deleted N rows and compacted
-  the table" overstates what happens; freeing space requires `pg_repack` or
-  `VACUUM FULL` with its exclusive lock.
+- **L7. Retention deletes do not return disk — FIXED for raw events (v1.2.17).**
+  `VACUUM (ANALYZE)` reclaims space for reuse inside the table but never
+  truncates it, so "deleted N rows and compacted the table" overstated what the
+  admin buttons did. The archive pass now ends with a `VACUUM FULL` on
+  `raw_events`, run once per pass and gated on how much was evicted. The QSO
+  retention buttons still only delete; they keep the old wording's limitation.
 - **L8. Callsign ownership cannot be verified — trust model.** Email ownership is
   verified; callsign ownership is not, so anyone can register an active
   operator's callsign and the profile page will present that operator's QSO
@@ -1333,6 +1334,12 @@ smaller form that suits this workload:
 - Raw events older than today 00:00 UTC are compressed one file per UTC day into
   `bminfo-raw/raw-events/YYYY/MM/DD.jsonl.gz`, verified by re-download, and then
   deleted from the table in batches.
+- Each archive pass ends with one `VACUUM FULL` on `raw_events`, because `DELETE`
+  frees pages for reuse but never shrinks the file. Measured at the same row
+  width: 1,736 MB with 86k live rows compacted in 3.4 s to 75 MB. It takes an
+  `ACCESS EXCLUSIVE` lock, so it runs once per pass rather than per day, only
+  when at least 20,000 rows were evicted, and gives up after a lock timeout
+  instead of queueing. See `OBJECT-STORAGE.md`.
 - The bucket expires objects after 365 days, so the archive is bounded without
   any code running.
 - Admin deletion by age was removed, because deleting a month of raw events is no

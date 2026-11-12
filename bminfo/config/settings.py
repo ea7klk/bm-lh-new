@@ -138,6 +138,13 @@ RAW_ARCHIVE_PREFIX = os.getenv("RAW_ARCHIVE_PREFIX", "raw-events").strip("/")
 RAW_ARCHIVE_INTERVAL_SECONDS = int(os.getenv("RAW_ARCHIVE_INTERVAL_SECONDS", "3600"))
 # Set to false to keep archiving manual (the admin button and command still work).
 RAW_ARCHIVE_ENABLED = env_bool("RAW_ARCHIVE_ENABLED", True)
+# Reclaim disk after a pass that evicted days. DELETE frees pages for reuse but
+# never shrinks the file; VACUUM FULL does, at the cost of an ACCESS EXCLUSIVE
+# lock while it rewrites the table. Runs at most once per archive pass, and only
+# when the pass deleted at least RAW_COMPACT_MIN_ROWS rows.
+RAW_ARCHIVE_COMPACT = env_bool("RAW_ARCHIVE_COMPACT", True)
+RAW_COMPACT_MIN_ROWS = int(os.getenv("RAW_COMPACT_MIN_ROWS", "20000"))
+RAW_COMPACT_LOCK_TIMEOUT_SECONDS = int(os.getenv("RAW_COMPACT_LOCK_TIMEOUT_SECONDS", "30"))
 MATOMO_ENABLED = env_bool("MATOMO_ENABLED", False)
 MATOMO_URL = os.getenv("MATOMO_URL", "")
 MATOMO_SITE_ID = os.getenv("MATOMO_SITE_ID", "")
