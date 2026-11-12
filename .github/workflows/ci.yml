@@ -48,7 +48,7 @@ jobs:
 
       - name: Check Django application
         env:
-          APP_SECRET_KEY: ci-only-secret
+          APP_SECRET_KEY: ci-only-signing-key-0123456789abcdefghijklmnopqrstuvwxyz
           DB_NAME: ci
           DB_USER: ci
           DB_PASSWORD: ci
@@ -59,7 +59,7 @@ jobs:
 
       - name: Run Django unit tests
         env:
-          APP_SECRET_KEY: ci-only-secret
+          APP_SECRET_KEY: ci-only-signing-key-0123456789abcdefghijklmnopqrstuvwxyz
           DB_NAME: ci
           DB_USER: ci
           DB_PASSWORD: ci

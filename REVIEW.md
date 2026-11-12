@@ -4,8 +4,8 @@ Date: 2026-11-11
 Scope: the whole repository at `main` (`a19afa8`) — the Django 6.1 / Channels
 service in `bminfo/` (~2.9k lines of application code plus ~0.9k of tests), the
 Docker/Compose stack, the Rancher Fleet bundle in `fleet/bminfo/`, the SOPS-era
-`gitops/` tree, and the CI workflow. The running deployment in the `bminfo`
-namespace was also inspected and measured.
+`gitops/` tree (since deleted; see "What was done"), and the CI workflow. The
+running deployment in the `bminfo` namespace was also inspected and measured.
 Reviewer: automated review, not a formal audit. This document finds defects; it
 does not prove their absence. **No behavioural change accompanies this
 document** — every finding below is recorded, not applied.
@@ -52,6 +52,16 @@ document** — every finding below is recorded, not applied.
 - Assessed whether `raw_events` belongs in PostgreSQL at all; that assessment was
   then implemented as day-per-object archiving to Silo (`OBJECT-STORAGE.md`),
   which also settles the partitioning question in "raw_events retention".
+- Removed SOPS. The `gitops/production` tree was a handoff record from the
+  `spainip/infra` migration and had not been applied since Rancher Fleet adopted
+  the bundle; it carried the only SOPS ciphertext in the repository, along with a
+  `ksops` generator and a root `.sops.yaml` recipient rule. All three were
+  deleted, the storage identities it documented were moved into `README.md`, and
+  the out-of-band secret model plus rotation procedures were written down in
+  `SECRETS.md`. Verified first that nothing deployed from that tree: the live
+  Fleet GitRepo reads `fleet/bminfo` only, no test, workflow, or script referenced
+  it, and the repository's secret handling already worked by cluster Secret
+  reference rather than by decryption.
 - Investigated the `ASGI 'lifespan' protocol appears unsupported` warning from
   the running web deployment by probing the application object directly, reading
   the Uvicorn lifespan implementation, and reproducing the handshake against the
@@ -120,19 +130,18 @@ H5 — is a single migration.
 
 ## High
 
-### H1. Production `SECRET_KEY` is the nine-character admin password — OPEN
+### H1. Production `SECRET_KEY` is the nine-character admin password — FIXED
 
-**Files:** `bminfo/config/settings.py:12`,
-`gitops/production/apps/web/environment.sops.yaml` (`APP_SECRET_KEY: ""`)
+**Files:** `bminfo/config/settings.py`, `SECRETS.md`
 
-**What the code does:**
+**What the code did:**
 
 ```python
 SECRET_KEY = os.getenv("APP_SECRET_KEY") or os.getenv("ADMIN_PASSWORD", "unsafe-development-key")
 ```
 
-**What production does.** The `web-env` secret carries `APP_SECRET_KEY` as a
-present-but-empty key. An empty string is falsy, so the `or` falls through to
+**What production did.** The `web-env` secret carried `APP_SECRET_KEY` as a
+present-but-empty key. An empty string is falsy, so the `or` fell through to
 `ADMIN_PASSWORD`. Verified inside the running pod rather than inferred:
 
 ```text
@@ -141,41 +150,45 @@ SECRET_KEY_IS_ADMIN_PASSWORD True
 SECRET_KEY_IS_FALLBACK False
 ```
 
-**Why it matters.** `SECRET_KEY` derives the signing keys for the session
+**Why it mattered.** `SECRET_KEY` derives the signing keys for the session
 cookie, the CSRF token, the messages cookie, and `django.contrib.sessions`.
-Anyone who learns the administrator password can therefore also forge a session
-cookie for *any* account without knowing that account's password — and the
-value in question is a nine-character human password, stored encrypted in SOPS
-and materialised into a Kubernetes secret, with a lifetime that predates this
-repository (`APP_SECRET_KEY: ""` arrived with `bc35335`, "Move production BMInfo
-manifests into application repository").
+Anyone who learned the administrator password could therefore also forge a
+session cookie for *any* account without knowing that account's password — and
+the value in question was a nine-character human password, stored encrypted in
+SOPS and materialised into a Kubernetes secret, with a lifetime that predates
+this repository (`APP_SECRET_KEY: ""` arrived with `bc35335`, "Move production
+BMInfo manifests into application repository").
 
-Two consequences follow even without an attacker:
+Two consequences followed even without an attacker:
 
-1. Rotating the admin password silently invalidates every user session, because
-   it rotates the signing key.
+1. Rotating the admin password silently invalidated every user session, because
+   it rotated the signing key.
 2. A key this short is guessable in a way a 50-byte random key is not. Django
    flags it as `security.W009` when the fallback is reached.
 
 **How it happened.** `5b2e830` ("Rename release image and clean application
 environment") introduced the `APP_SECRET_KEY or ADMIN_PASSWORD` fallback to make
-the stack startable without a secret. The fallback is the defect: it turns a
+the stack startable without a secret. The fallback is the defect: it turned a
 missing secret into a *silently weaker* configuration instead of a startup
-failure. An empty `APP_SECRET_KEY` in the manifest then takes the weak path
-without anyone noticing, because nothing fails.
+failure. An empty `APP_SECRET_KEY` in the manifest then took the weak path
+without anyone noticing, because nothing failed.
 
-**Fix (not applied).** Two parts, both small:
+**Fix, applied in v1.2.24.** Both halves:
 
-- Generate a real key (`python -c 'import secrets;print(secrets.token_urlsafe(64))'`),
-  put it in `environment.sops.yaml`, and re-encrypt with `sops`.
-- Change the setting to fail closed: if `APP_SECRET_KEY` is absent or shorter
-  than 50 characters, raise `ImproperlyConfigured` rather than falling back to
-  the admin password. Keep the `unsafe-development-key` default only when
-  `DEBUG` is true, and log loudly otherwise.
+- Production's `APP_SECRET_KEY` was replaced with a 64-byte random value, so the
+  signing key is no longer any human password. Sessions signed with the old key
+  are invalid.
+- The fallback is gone. `resolve_secret_key()` raises `ImproperlyConfigured`
+  when the key is missing or shorter than 50 characters and `DEBUG` is false, so
+  the pod crashloops and fails its probe instead of serving with a forgeable
+  key. The `unsafe-development-key` default survives only under `DEBUG`.
 
-Deploying this invalidates all current sessions. That is the correct outcome,
-but it is a production-impacting change and was not made under a documentation
-mandate.
+This is a mechanism rather than a note on purpose: the original bug was not a
+wrong line of code, it was a configuration that could be wrong without saying
+so. The check makes that state unrepresentable in a running deployment.
+
+`ADMIN_PASSWORD` was rotated in the same pass (it was nine characters, M4).
+Deploying this invalidated all sessions, which is the correct outcome.
 
 ### H2. Ten unauthenticated requests saturate the service — OPEN
 
@@ -627,7 +640,8 @@ the cheapest correct answer for a single-replica deployment.
 ### M3. `COOKIE_SECURE=false` in production, which serves HTTPS — OPEN
 
 **Files:** `bminfo/config/settings.py:94-95`, `.env.example`,
-`gitops/production/apps/web/environment.sops.yaml`
+`web-env` (the cluster Secret; it was formerly mirrored by
+`gitops/production/apps/web/environment.sops.yaml`, since deleted)
 
 `README.md` says: "Use `COOKIE_SECURE=true` … when the application is served
 over HTTPS." Production is served over HTTPS and resolves:
@@ -660,9 +674,12 @@ RegistrationForm with "12345678"      -> valid
 RegistrationForm with "password"      -> valid
 ```
 
-Combined with H1 — the admin password is nine characters and *is* the signing
-key — the practical password strength of this deployment is the strength of that
-one string.
+Combined with H1 — the admin password was nine characters and *was* the signing
+key — the practical password strength of this deployment was the strength of
+that one string. The second half is gone: the signing key is now independent and
+random, and `ADMIN_PASSWORD` was rotated to a 32-character random value in the
+same pass. What remains open is the policy itself, which still accepts
+`password` for ordinary registrations.
 
 **Fix (not applied).** Add the four standard validators. Any policy that rejects
 `password` is an improvement; the migration cost is zero because Django only
@@ -1578,9 +1595,15 @@ Traced and found sound, so the scope of the "clean" claim is honest.
   budget is not at risk today but is the reason worker count should not be
   raised without a pooler.
 - **Secret hygiene in Git.** `.env` and its variants are ignored; `git log --all
-  -- .env` is empty; the `gitops/` and Fleet secrets are SOPS-encrypted
-  (`ENC[AES256_GCM,...]`); no credential appears in `README.md`,
-  `.env.example` (placeholders only) or the CI workflow.
+  -- .env` is empty; no credential appears in `README.md`, `.env.example`
+  (placeholders only) or the CI workflow. Since the SOPS removal, the repository
+  holds no secret material at all — not plaintext and not ciphertext — and every
+  workload reads a cluster Secret by name (`SECRETS.md`). This is stronger than
+  the previous state for two reasons: an encrypted blob in a public repository
+  is only as safe as an age key that lives elsewhere, and the ciphertext forced a
+  decrypt-and-commit workflow for every change. The cost is that the cluster is
+  now the sole custodian of the values, so `SECRETS.md` documents creation and
+  rotation instead of a `.sops.yaml` recipient rule.
 - **CI integrity.** The workflow runs on `ubuntu-latest` with a PostgreSQL
   service, the top-level `permissions` is `contents: read`, and
   `packages: write` is granted only to the image-publish job. No
@@ -1607,10 +1630,10 @@ Traced and found sound, so the scope of the "clean" claim is honest.
 1. ~~**H5 — add an index on `qsos (stop_at)`**~~ — **done** (migration `0006`,
    shipped in v1.2.6; see H5 for the measured plans, the 2.2 s build cost and
    the 77 MB index size).
-2. **H1 — replace the signing key.** Generate a real `APP_SECRET_KEY`, re-encrypt
-   the SOPS manifest, and make the setting fail closed. It is the only finding
-   whose exploitation is "log in with the password you already have". Expect all
-   sessions to be invalidated.
+2. ~~**H1 — replace the signing key**~~ — **done** in v1.2.24. `APP_SECRET_KEY`
+   is a 64-byte random value in `web-env`, and `resolve_secret_key()` now refuses
+   to start without a key of at least 50 characters. It was the only finding
+   whose exploitation was "log in with the password you already have".
 3. **H4 — narrow the purge predicate before it is trusted.** It runs nightly at
    03:17. Record verification intent (token existence or a
    `verification_sent_at` column) instead of inferring it from `is_active`,

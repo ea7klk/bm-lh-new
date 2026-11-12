@@ -62,10 +62,39 @@ The production workloads are deployed by Rancher Fleet from
 [`fleet/bminfo`](fleet/bminfo), following `main`. Its GitRepo is
 `ea7klk/bminfo` in the `ea7klk` Fleet workspace, registered centrally in
 `spainip/infra/fleet/bminfo-gitrepo.yaml`. The application namespace remains
-`bminfo`; its dedicated PVs and PVCs are owned by this bundle. The older
-[`gitops/production`](gitops/production) tree preserves the SOPS and storage
-handoff definitions; do not apply it as a second controller. Traefik,
-cluster bootstrap, and shared storage remain in `spainip/infra`.
+`bminfo`. The namespace itself is created by `spainip/infra`, not by this
+bundle, which only addresses it via `defaultNamespace`. Traefik, cluster
+bootstrap, and shared storage remain in
+`spainip/infra`.
+
+### Persistent storage
+
+The bundle owns both persistent volumes, and their identities are load-bearing:
+recreating or renaming a claim orphans the data on the node.
+
+| Application | PVC in `bminfo` | PV | Node path |
+| --- | --- | --- | --- |
+| PostgreSQL | `v-f5b2c398ce5127fa` | `bminfo-v-f5b2c398ce5127fa` | `/opt/stacks/bminfo/django_postgres_data` |
+| pgAdmin | `v-170642bc4e016938` | `bminfo-v-170642bc4e016938` | `/opt/stacks/bminfo/pgadmin_data` |
+
+Both PVs use the empty storage class, are bound to `spainip-k3s` by node
+affinity, and carry a `Retain` reclaim policy. They were adopted in place; the
+claims keep their original names deliberately.
+
+### Secrets
+
+No secret material lives in this repository, encrypted or otherwise. Each
+workload reads a Kubernetes Secret that is created directly in the cluster and
+referenced by name (`envFrom.secretRef`), so the repository describes *which*
+secret a pod reads but never its contents. `SECRETS.md` lists the secrets, the
+keys that matter inside each one, and how to create or rotate them.
+
+The bundle previously carried SOPS-encrypted copies of the old `gitops/`
+manifests. That tree was a handoff record from the `spainip/infra` migration and
+was never applied — Fleet has been the only controller since — so it was
+deleted along with the `.sops.yaml` recipient rules and the `ksops` generator.
+Clusters read secret values from the Secrets themselves; there is no Encryption
+Configuration or age key involved in a deploy.
 
 ### Process topology
 
@@ -125,7 +154,7 @@ dependencies and set the database variables used in `config/settings.py`:
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -r bminfo/requirements.txt
-export APP_SECRET_KEY=development-only
+export APP_SECRET_KEY=dev-only-insecure-signing-key-change-me-0123456789abcdef
 export DB_HOST=localhost
 export DB_NAME=bminfo
 export DB_USER=bminfo

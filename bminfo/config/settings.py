@@ -1,6 +1,8 @@
 from pathlib import Path
 import os
 
+from django.core.exceptions import ImproperlyConfigured
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -9,8 +11,33 @@ def env_bool(name: str, default: bool = False) -> bool:
     return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 
-SECRET_KEY = os.getenv("APP_SECRET_KEY") or os.getenv("ADMIN_PASSWORD", "unsafe-development-key")
 DEBUG = env_bool("APP_DEBUG", False)
+
+# The signing key is the root of every session cookie and password-reset token.
+# It used to fall back to ADMIN_PASSWORD, so a deployment that left
+# APP_SECRET_KEY empty -- production did, for two months -- silently signed
+# cookies with the nine-character administrator password. Nothing failed; the
+# application served normally with a guessable key. Outside DEBUG a missing or
+# short key is now a startup failure, which is the only form of this bug anyone
+# notices: the pod crashloops and fails its probe instead of quietly serving.
+SECRET_KEY_FALLBACK = "unsafe-development-key"
+SECRET_KEY_MIN_LENGTH = 50
+
+
+def resolve_secret_key() -> str:
+    value = os.getenv("APP_SECRET_KEY", "").strip()
+    if DEBUG:
+        return value or SECRET_KEY_FALLBACK
+    if len(value) < SECRET_KEY_MIN_LENGTH:
+        raise ImproperlyConfigured(
+            "APP_SECRET_KEY must be at least "
+            f"{SECRET_KEY_MIN_LENGTH} characters outside DEBUG (got {len(value)}). "
+            "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(64))'"
+        )
+    return value
+
+
+SECRET_KEY = resolve_secret_key()
 ALLOWED_HOSTS = [host.strip() for host in os.getenv("APP_ALLOWED_HOSTS", "*").split(",") if host.strip()]
 
 INSTALLED_APPS = [
