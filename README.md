@@ -135,6 +135,18 @@ missed. The collector heartbeat advances only while connected, so
 `/status/` becomes degraded after a sustained disconnection (90 seconds with
 the default heartbeat interval). `/health/` remains the web liveness check.
 
+Every 100 collected rows the collector logs a running total since the process
+started, so ingestion can be confirmed without enabling DEBUG:
+
+```text
+INFO dashboard.collector collector progress: 3400 rows written since start
+```
+
+A row is one raw event plus any QSO it produced, so a completed session counts
+two and an event filtered out before storage counts nothing. Talkgroup catalogue
+rows are reference data and are not counted. The total resets only on restart;
+reconnects inside the retry loop do not reset it.
+
 ## Donation reminders
 
 Public application pages include a dismissible reminder linking to

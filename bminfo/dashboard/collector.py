@@ -2,6 +2,8 @@ import hashlib
 import json
 import logging
 import os
+import threading
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import requests
@@ -103,13 +105,93 @@ def _event_values(payload):
     }
 
 
-def store_event(payload, threshold, exclude_talkgroup, raw_threshold=None):
+# How many rows to write between progress log lines.
+PROGRESS_LOG_EVERY = 100
+
+
+@dataclass(frozen=True)
+class StoreResult:
+    """What storing one event produced.
+
+    ``bool()`` answers "was a QSO written", which is what the collector and its
+    tests have always asked of the return value. The row count is separate so
+    callers that report throughput can count raw events too.
+    """
+
+    raw_written: bool = False
+    qso_written: bool = False
+    talkgroup_created: bool = False
+
+    def __bool__(self) -> bool:
+        return self.qso_written
+
+    @property
+    def rows_written(self) -> int:
+        """Collected rows written: the raw event plus any QSO.
+
+        Talkgroup catalogue rows are reference data rather than collected
+        events, so they are excluded from the throughput count.
+        """
+        return int(self.raw_written) + int(self.qso_written)
+
+
+class WriteCounter:
+    """Counts rows written since the collector started.
+
+    Logs a running total every ``step`` rows so an operator can tell at a glance
+    that ingestion is still moving, without enabling DEBUG. The count is reset
+    only by restarting the process: it lives for the whole life of
+    ``run_collector``, so a reconnect inside the retry loop does not reset it.
+
+    Events arrive on several Socket.IO callback threads, so the total is guarded
+    by a lock. The log line is emitted outside the lock to keep the critical
+    section to an integer add.
+    """
+
+    def __init__(self, step: int = PROGRESS_LOG_EVERY):
+        self._step = max(int(step), 1)
+        self._lock = threading.Lock()
+        self._total = 0
+
+    @property
+    def total(self) -> int:
+        with self._lock:
+            return self._total
+
+    @property
+    def step(self) -> int:
+        return self._step
+
+    def add(self, written: int) -> int | None:
+        """Record ``written`` rows; return the new total if a step was crossed."""
+        if written <= 0:
+            return None
+        with self._lock:
+            previous = self._total
+            self._total += written
+            total = self._total
+            crossed = total // self._step > previous // self._step
+        if crossed:
+            logger.info(
+                "collector progress: %d rows written since start", total
+            )
+            return total
+        return None
+
+
+def store_event(payload, threshold, exclude_talkgroup, raw_threshold=None) -> StoreResult:
+    """Store one decoded event.
+
+    Returns a `StoreResult`. ``bool(result)`` is true only when a QSO was
+    upserted, which is the meaning callers have always relied on; the raw event
+    may still have been recorded, and `rows_written` reports that.
+    """
     values = _event_values(payload)
     if raw_threshold is None:
         raw_threshold = raw_event_threshold_seconds()
     if values["event_type"].casefold() == "session-stop" and values["start_at"] is not None and values["stop_at"] is not None:
         if (values["stop_at"] - values["start_at"]).total_seconds() < raw_threshold:
-            return False
+            return StoreResult()
     RawEvent.objects.update_or_create(
         payload_hash=_payload_hash(payload),
         defaults={
@@ -121,19 +203,23 @@ def store_event(payload, threshold, exclude_talkgroup, raw_threshold=None):
             "payload": payload,
         },
     )
+    # The raw event is recorded from here on.
+    raw = StoreResult(raw_written=True)
     if values["event_type"].casefold() != "session-stop":
-        return False
+        return raw
     if values["start_at"] is None or values["stop_at"] is None:
-        return False
+        return raw
     duration_ms = round((values["stop_at"] - values["start_at"]).total_seconds() * 1000)
     if duration_ms < round(threshold * 1000):
-        return False
+        return raw
     destination_id = values["destination_id"]
     if destination_id in NON_QSO_DESTINATION_IDS:
+        # Removing a stale QSO is a delete, not an insertion, so it is not
+        # counted; the raw event above still was.
         QSO.objects.filter(session_id=values["session_id"]).delete()
-        return False
+        return raw
     if destination_id is None or destination_id == exclude_talkgroup or destination_id > 999999:
-        return False
+        return raw
     talkgroup = Talkgroup.objects.filter(talkgroup_id=destination_id).first()
     if destination_id == 214001:
         talkgroup, _ = Talkgroup.objects.update_or_create(
@@ -142,9 +228,11 @@ def store_event(payload, threshold, exclude_talkgroup, raw_threshold=None):
         )
     destination_name = values["destination_name"] or (talkgroup.name if talkgroup else None)
     if not destination_name:
-        return False
+        return raw
+    talkgroup_created = False
     if talkgroup is None:
         talkgroup = Talkgroup.objects.create(talkgroup_id=destination_id, name=str(destination_name))
+        talkgroup_created = True
     # Use a database-native upsert. Lastheard can deliver the same completed
     # session on multiple callback threads, and update_or_create still has an
     # insert race when two transactions observe the missing primary key at
@@ -201,7 +289,7 @@ def store_event(payload, threshold, exclude_talkgroup, raw_threshold=None):
         ],
         unique_fields=["session_id"],
     )
-    return True
+    return StoreResult(raw_written=True, qso_written=True, talkgroup_created=talkgroup_created)
 
 
 def sync_talkgroups(url, *, force=False):
@@ -278,6 +366,10 @@ def run_collector(stop_event, connected_event):
         log = logger.info if stop_event.is_set() else logger.warning
         log("disconnected from BrandMeister Lastheard: %s", reason or "unknown reason")
 
+    # One counter for the life of this run, so its total is "since restart" and
+    # survives the reconnect loop below. It logs every PROGRESS_LOG_EVERY rows.
+    counter = WriteCounter()
+
     @socket_client.on("mqtt")
     def on_mqtt(data):
         payload = decode(data)
@@ -286,8 +378,11 @@ def run_collector(stop_event, connected_event):
         try:
             close_old_connections()
             with transaction.atomic():
-                if store_event(payload, threshold, exclude_talkgroup, raw_threshold):
-                    logger.debug("stored QSO")
+                result = store_event(payload, threshold, exclude_talkgroup, raw_threshold)
+            written = result.rows_written
+            if written:
+                logger.debug("stored event: %d row(s)", written)
+                counter.add(written)
         except Exception:
             logger.exception("could not store BrandMeister event")
         finally:
