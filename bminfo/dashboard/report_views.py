@@ -368,7 +368,7 @@ def report_pdf(request):
     trend = data["traffic_trend"]["qso_change_percent"]
     trend_text = f"{trend}%" if trend is not None else "N/A"
     story = [
-        Paragraph("BrandMeister Lastheard report", styles["Title"]),
+        Paragraph("BrandMeister Statistics by EA7KLK — report", styles["Title"]),
         Paragraph(escape(" / ".join(filters)), styles["ReportSubtitle"]),
     ]
     story.append(report_table(
@@ -436,9 +436,25 @@ def report_pdf(request):
         canvas.line(margin, page_height - 10 * mm, page_width - margin, page_height - 10 * mm)
         canvas.setFont("Helvetica", 7)
         canvas.setFillColor(colors.HexColor("#64748b"))
-        canvas.drawString(margin, 8 * mm, "BrandMeister Lastheard")
+        canvas.drawString(margin, 8 * mm, "BrandMeister Statistics by EA7KLK")
         canvas.drawRightString(page_width - margin, 8 * mm, f"Page {canvas.getPageNumber()}")
         canvas.restoreState()
+
+    styles.add(ParagraphStyle(
+        name="ReportDisclaimer",
+        parent=styles["Normal"],
+        fontSize=7,
+        leading=10,
+        textColor=colors.HexColor("#8a949c"),
+        spaceBefore=10,
+    ))
+    story.append(Paragraph(
+        "Own work; all data is obtained from the BrandMeister LastHeard service. "
+        "Not affiliated with, endorsed by, or supported by BrandMeister. "
+        "Provided as-is, without any claim of completeness, accuracy, or fitness "
+        "for a particular purpose.",
+        styles["ReportDisclaimer"],
+    ))
 
     doc.build(story, onFirstPage=draw_page, onLaterPages=draw_page)
     response = HttpResponse(output.getvalue(), content_type="application/pdf")

@@ -208,6 +208,25 @@ The six-month estimate assumes the current seven-day activity rate and the
 current raw-event retention policy; sustained traffic growth or a higher raw
 payload volume requires proportional headroom.
 
+## Translations
+
+User-visible text lives in `dashboard/translations.json`, one catalogue per
+locale (English, Spanish, German, French). When adding or changing a key, update
+all four — `dashboard/tests/test_branding.py` and `test_emails.py` assert key
+parity and catch a locale that falls back to English.
+
+Account emails keep one section per purpose (`emailVerification`,
+`passwordReset`, `emailChange`). Each section carries its own greeting, expiry,
+ignore and footer wording, so a password-reset mail never borrows the
+"confirmation link" sentence. The mailer reads those keys from the section it is
+sending, and the tests check that each email mentions its own purpose in every
+locale.
+
+Counted sentences use CLDR plural categories: `expiryOne` and `expiryOther`
+pairs resolved by `translate_count()` in `dashboard/i18n.py`. English, Spanish
+and German use the singular only for 1; French also uses it for 0, which is why
+the helper exists instead of appending an "s" by hand.
+
 ## Branding and disclaimer
 
 The interface is an admin-style shell using the colours and layout conventions

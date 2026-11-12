@@ -42,6 +42,32 @@ def translate(locale: str | None, key: str, **values: Any) -> str:
     return str(value).format(**values) if values else str(value)
 
 
+def plural_category(locale: str | None, count: int) -> str:
+    """CLDR plural category for the supported locales.
+
+    English, Spanish and German use "one" only for 1. French also counts 0 as
+    "one" ("0 heure"). Plural rules for these four languages have no other
+    categories, so two is enough; anything else would be guesswork.
+    """
+    if normalize_locale(locale) == "fr":
+        return "one" if count in (0, 1) else "other"
+    return "one" if count == 1 else "other"
+
+
+def translate_count(locale: str | None, key: str, count: int, **values: Any) -> str:
+    """Translate ``key`` using the ``One``/``Other`` variant for ``count``.
+
+    Callers pass a base key such as ``emailVerification.expiry``; the catalogue
+    holds ``expiryOne`` and ``expiryOther``. Falling back to ``Other`` keeps a
+    partially translated catalogue from raising.
+    """
+    suffix = "One" if plural_category(locale, count) == "one" else "Other"
+    localized = translate(locale, f"{key}{suffix}", **values)
+    if localized == f"{key}{suffix}":
+        localized = translate(locale, f"{key}Other", **values)
+    return localized
+
+
 def locale_from_request(request) -> str:
     requested = request.GET.get("lang") or request.COOKIES.get("bm_lang")
     if not requested:
