@@ -174,10 +174,10 @@ the old account with `mcli admin user svcacct rm silo <access-key>`.
 | `S3_REGION` | `us-east-1` | Accepted by Silo, unused for signing. |
 | `S3_ADDRESSING_STYLE` | `path` | Silo is path-style (`host/bucket/key`). |
 | `RAW_ARCHIVE_PREFIX` | `raw-events` | Key prefix inside the bucket. |
-| `RAW_ARCHIVE_INTERVAL_SECONDS` | `3600` | Unused since the archive moved to a CronJob; kept for Compose. |
 | `RAW_ARCHIVE_ENABLED` | `true` | Set false to disable the loop; manual runs still work. |
 | `RAW_ARCHIVE_COMPACT` | `true` | Reclaim disk after a pass that evicted days. |
 | `RAW_COMPACT_MIN_ROWS` | `20000` | Only compact when the pass deleted at least this many rows. |
+| `RAW_COMPACT_MIN_BYTES` | `16777216` (16 MiB) | Never rewrite a table smaller than this; `VACUUM FULL` on a tiny table costs more than it returns. |
 | `RAW_COMPACT_LOCK_TIMEOUT_SECONDS` | `30` | Give up rather than queue behind another session. |
 
 Archiving requires **all** of endpoint, bucket and both keys. If any is missing
@@ -244,7 +244,13 @@ The archive pass therefore ends with **one compaction**, which runs
   queue behind another session. A lock timeout is recorded in the run detail and
   the next pass retries; it never fails the archive.
 - **Disable it** with `RAW_ARCHIVE_COMPACT=false`, or per run with
-  `archive_raw_events --no-compact`.
+  `archive_raw_events --no-compact` / `cleanup_raw_events --no-compact`.
+
+**The nightly cleanup compacts too.** It deletes duplicates and kerchunks, which
+on the first production run removed 184,735 rows and left 241 MB holding 74k —
+the same bloat problem, a day before the next archive pass would have fixed it.
+`cleanup_raw_events` now applies the same compaction, gated by
+`RAW_COMPACT_MIN_ROWS` and `RAW_COMPACT_MIN_BYTES`.
 
 `pg_repack` would avoid the lock but is not installed in the PostgreSQL image and
 would need a custom image plus `CREATE EXTENSION`; the lock window here is short

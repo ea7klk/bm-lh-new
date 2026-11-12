@@ -12,6 +12,7 @@ from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from dashboard.management.commands.db_migrate import MIGRATION_LOCK_KEY
+from dashboard.maintenance import clear_irrelevant_raw_events
 from dashboard.models import RawEvent
 
 
@@ -134,3 +135,94 @@ class MigrationLockTests(TransactionTestCase):
                 call_command("db_migrate", stdout=StringIO(), verbosity=0)
 
         self.assertEqual(self._lock_holders(), 0)
+
+
+@override_settings(RAW_EVENT_KERCHUNK_THRESHOLD_SECONDS=3, RAW_ARCHIVE_COMPACT=True,
+                   RAW_COMPACT_MIN_ROWS=1, RAW_COMPACT_MIN_BYTES=0)
+class CleanupCompactionTests(TransactionTestCase):
+    """A large cleanup must reclaim the disk, not just free pages.
+
+    Production deleted 184,735 rows at 02:17 and left 241 MB holding 74k rows,
+    because the cleanup vacuumed but never compacted and the next archive pass
+    was a day away.
+    """
+
+    def _fill(self, count=400):
+        now = timezone.now()
+        rows = []
+        for index in range(count):
+            rows.append(RawEvent(
+                payload_hash=hashlib.sha256(f"bloat{index}".encode()).hexdigest(),
+                session_id=f"bloat{index}",
+                event_type="Session-Start",          # every one is a candidate
+                received_at=now - timedelta(minutes=index),
+                start_at=now, stop_at=now,
+                payload={"Event": "Session-Start", "pad": "x" * 400},
+            ))
+        RawEvent.objects.bulk_create(rows, batch_size=200)
+
+    def _heap_bytes(self):
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_relation_size('raw_events')")
+            return cursor.fetchone()[0]
+
+    def test_large_cleanup_compacts_the_table(self):
+        self._fill()
+        before = self._heap_bytes()
+
+        result = clear_irrelevant_raw_events()
+
+        self.assertEqual(result["deleted"], 400)
+        self.assertFalse(result["compaction"].get("skipped"),
+                         "a large delete should compact, not just vacuum")
+        self.assertLess(self._heap_bytes(), before)
+
+    def test_small_cleanup_only_vacuums(self):
+        self._fill(count=10)
+        with override_settings(RAW_COMPACT_MIN_ROWS=20000):
+            result = clear_irrelevant_raw_events()
+
+        self.assertEqual(result["deleted"], 10)
+        self.assertTrue(result["compaction"].get("skipped"))
+        self.assertIn("RAW_COMPACT_MIN_ROWS", result["compaction"]["reason"])
+
+    def test_compaction_can_be_disabled(self):
+        self._fill(count=50)
+        result = clear_irrelevant_raw_events(compact=False)
+
+        self.assertEqual(result["deleted"], 50)
+        self.assertTrue(result["compaction"]["skipped"])
+
+    def test_nothing_to_delete_does_no_work(self):
+        result = clear_irrelevant_raw_events()
+
+        self.assertEqual(result["deleted"], 0)
+        self.assertEqual(result["compaction"], {})
+
+    def test_dry_run_reports_the_count_without_writing(self):
+        self._fill(count=25)
+
+        result = clear_irrelevant_raw_events(dry_run=True)
+
+        self.assertEqual(result["deleted"], 25)
+        self.assertTrue(result["dry_run"])
+        self.assertEqual(RawEvent.objects.count(), 25)
+
+    def test_command_reports_compaction(self):
+        self._fill(count=400)
+        out = StringIO()
+
+        call_command("cleanup_raw_events", stdout=out)
+
+        self.assertIn("compacted raw_events", out.getvalue())
+
+    def test_command_no_compact_flag(self):
+        self._fill(count=400)
+        out = StringIO()
+
+        call_command("cleanup_raw_events", "--no-compact", stdout=out)
+
+        self.assertNotIn("compacted raw_events", out.getvalue())
+        self.assertIn("no compaction", out.getvalue())

@@ -22,9 +22,10 @@ bminfo/
 └── requirements.txt
 ```
 
-The container entrypoint applies migrations, collects static files, creates or
-updates the configured administrator, starts the BrandMeister collector when
-enabled, and serves the ASGI application with Gunicorn/Uvicorn workers.
+The container entrypoint takes a role (see [Process topology](#process-topology)).
+The `web` role applies migrations, collects static files, creates or updates the
+configured administrator, and serves the ASGI application with Gunicorn/Uvicorn
+workers; the `collector` role runs the LastHeard collector in its own pod.
 
 ## Run with Docker Compose
 

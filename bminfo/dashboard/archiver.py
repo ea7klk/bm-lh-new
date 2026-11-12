@@ -354,7 +354,13 @@ def compact_raw_events(*, force: bool = False) -> dict:
     which is reported instead so the next pass can retry.
     """
     before = relation_sizes()
-    if not force and before["heap_bytes"] < 16 * 1024 * 1024:
+    if connection.in_atomic_block:
+        # VACUUM FULL cannot run inside a transaction block. Scheduled runs are
+        # in autocommit and do compact; a caller that wrapped this in atomic()
+        # gets a skip rather than an error.
+        return {"skipped": True, "reason": "inside a transaction", **before}
+    floor = int(getattr(settings, "RAW_COMPACT_MIN_BYTES", 16 * 1024 * 1024))
+    if not force and before["heap_bytes"] < floor:
         return {"skipped": True, "reason": "table is already small", **before}
 
     started = perf_counter()

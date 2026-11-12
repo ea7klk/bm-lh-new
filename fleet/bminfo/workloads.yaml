@@ -863,7 +863,7 @@
     "startingDeadlineSeconds": 1800,
     "jobTemplate": {
       "spec": {
-        "activeDeadlineSeconds": 1800,
+        "activeDeadlineSeconds": 3600,
         "backoffLimit": 2,
         "template": {
           "metadata": {
@@ -905,7 +905,7 @@
                 "resources": {
                   "requests": {
                     "cpu": "25m",
-                    "memory": "128Mi"
+                    "memory": "256Mi"
                   }
                 },
                 "securityContext": {},

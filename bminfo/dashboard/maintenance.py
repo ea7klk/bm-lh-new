@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import logging
 
+from django.conf import settings
 from django.db import connection, transaction
 
+from .archiver import compact_raw_events
 from .models import RawEvent
 from .qso_rules import raw_event_threshold_seconds
 
@@ -45,14 +47,27 @@ def irrelevant_raw_event_ids() -> list[int]:
     return candidates
 
 
-def clear_irrelevant_raw_events(*, dry_run: bool = False) -> int:
-    """Delete those rows in batches, then vacuum.
+def clear_irrelevant_raw_events(*, dry_run: bool = False, compact: bool | None = None,
+                                compact_min_rows: int | None = None) -> dict:
+    """Delete the rows `irrelevant_raw_event_ids` returns, then reclaim the disk.
 
-    Returns the number deleted, or for a dry run the number that would be.
+    Returns ``{"deleted": n, "compaction": {...}}``. A dry run reports the count
+    without writing.
+
+    Deleting leaves the freed pages in the file, so a cleanup that removes a
+    large number of rows must compact afterwards or the table keeps its old size
+    on disk: a production run deleted 184,735 rows and left 241 MB holding 74k.
+    The same compaction the archive pass uses is therefore applied here, gated on
+    how many rows were deleted.
     """
+    if compact is None:
+        compact = bool(getattr(settings, "RAW_ARCHIVE_COMPACT", True))
+    if compact_min_rows is None:
+        compact_min_rows = int(getattr(settings, "RAW_COMPACT_MIN_ROWS", 20000))
+
     ids = irrelevant_raw_event_ids()
-    if dry_run or not ids:
-        return len(ids)
+    if dry_run:
+        return {"deleted": len(ids), "compaction": {}, "dry_run": True}
 
     deleted = 0
     for start in range(0, len(ids), DELETE_BATCH):
@@ -61,12 +76,29 @@ def clear_irrelevant_raw_events(*, dry_run: bool = False) -> int:
             removed, _ = RawEvent.objects.filter(pk__in=chunk).delete()
         deleted += removed
 
-    # VACUUM cannot run inside a transaction block. Scheduled runs are in
-    # autocommit and do vacuum; a caller that wraps this in atomic() (an admin
-    # request, a test) gets the deletes without the vacuum rather than an error.
+    if deleted == 0:
+        return {"deleted": 0, "compaction": {}}
+
     if connection.in_atomic_block:
-        logger.info("skipping VACUUM of raw_events: inside a transaction")
+        # VACUUM cannot run inside a transaction block; a caller that wrapped
+        # this in atomic() (an admin request, a test) gets the deletes only.
+        logger.info("skipping maintenance of raw_events: inside a transaction")
+        return {"deleted": deleted, "compaction": {"skipped": True, "reason": "inside a transaction"}}
+
+    if compact and deleted >= compact_min_rows:
+        compaction = compact_raw_events()
+        if compaction.get("skipped"):
+            # Too small to be worth rewriting: still mark the freed pages
+            # reusable for the next inserts.
+            with connection.cursor() as cursor:
+                cursor.execute("VACUUM (ANALYZE, PARALLEL 0) raw_events")
     else:
+        # Small delete, or compaction disabled: plain VACUUM still makes the
+        # freed pages reusable for the next inserts.
         with connection.cursor() as cursor:
             cursor.execute("VACUUM (ANALYZE, PARALLEL 0) raw_events")
-    return deleted
+        compaction = {
+            "skipped": True,
+            "reason": "below RAW_COMPACT_MIN_ROWS" if not compact_min_rows <= deleted else "compaction disabled",
+        }
+    return {"deleted": deleted, "compaction": compaction}
