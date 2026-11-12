@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup 1 · Spectrum — BrandMeister Lastheard</title>
+<style>
+  :root{
+    --bg:#070b10;
+    --panel:#0f1620;
+    --panel-2:#121c28;
+    --line:#1e2b3a;
+    --line-soft:#16222f;
+    --ink:#e6f0f8;
+    --ink-dim:#8ba3b8;
+    --ink-faint:#5d768c;
+    --cyan:#22d3ee;
+    --cyan-deep:#0891b2;
+    --amber:#fbbf24;
+    --green:#34d399;
+    --rose:#fb7185;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1100px 620px at 82% -12%, #10314a 0%, transparent 62%),
+      radial-gradient(820px 520px at 4% 6%, #0b2b33 0%, transparent 58%),
+      var(--bg);
+    color:var(--ink);
+    font:15px/1.55 Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  .num{font-family:"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;font-variant-numeric:tabular-nums}
+  .wrap{max-width:1320px;margin:0 auto;padding:22px 22px 64px}
+
+  /* ---------- mockup badge ---------- */
+  .badge{
+    position:fixed;right:14px;bottom:14px;z-index:50;
+    display:flex;align-items:center;gap:9px;
+    background:#0c1520ee;border:1px solid var(--line);
+    padding:8px 13px;border-radius:999px;
+    font-size:12px;letter-spacing:.02em;color:var(--ink-dim);
+    backdrop-filter:blur(9px);
+    box-shadow:0 12px 34px #0009;
+  }
+  .badge b{color:var(--cyan);font-weight:600}
+  .badge a{color:var(--ink-dim);text-decoration:none;border-bottom:1px dotted #3b5468}
+  .badge a:hover{color:var(--ink)}
+
+  /* ---------- header ---------- */
+  header.top{
+    display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+    padding:14px 18px;margin-bottom:20px;
+    background:linear-gradient(180deg,#101a26cc,#0b131dcc);
+    border:1px solid var(--line);border-radius:var(--radius);
+    backdrop-filter:blur(8px);
+  }
+  .brand{display:flex;align-items:center;gap:12px;min-width:0}
+  .brand img{width:38px;height:38px;object-fit:contain;filter:drop-shadow(0 3px 10px #22d3ee38)}
+  .brand-txt{display:flex;flex-direction:column;line-height:1.15;min-width:0}
+  .brand-txt strong{font-size:15px;letter-spacing:.02em;font-weight:650}
+  .brand-txt span{font-size:11.5px;color:var(--ink-faint);letter-spacing:.09em;text-transform:uppercase}
+  nav.main{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto}
+  nav.main a{
+    color:var(--ink-dim);text-decoration:none;font-size:13.5px;font-weight:500;
+    padding:8px 13px;border-radius:9px;border:1px solid transparent;white-space:nowrap;
+    transition:background .15s,color .15s,border-color .15s;
+  }
+  nav.main a:hover{background:#16222f;color:var(--ink);border-color:var(--line)}
+  nav.main a.on{background:linear-gradient(180deg,#0e4a5a,#0b3a47);color:#d9fbff;border-color:#1b6b7d}
+  .live-pill{
+    display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;
+    color:#a7f3d0;background:#062e24;border:1px solid #10543f;
+    padding:6px 11px;border-radius:999px;white-space:nowrap;
+  }
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 #34d39980;animation:pulse 2.1s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 #34d3998c}70%{box-shadow:0 0 0 8px #34d39900}100%{box-shadow:0 0 0 0 #34d39900}}
+
+  /* ---------- hero ---------- */
+  .hero{display:grid;grid-template-columns:1fr;gap:16px;margin-bottom:16px}
+  .hero-head{display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap}
+  h1{margin:0;font-size:clamp(22px,2.6vw,30px);letter-spacing:-.02em;font-weight:680}
+  h1 em{font-style:normal;color:var(--cyan)}
+  .hero-head p{margin:6px 0 0;color:var(--ink-dim);font-size:13.5px;max-width:60ch}
+  .range{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+  .range button{
+    font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;
+    background:#0e1824;color:var(--ink-dim);border:1px solid var(--line);
+    padding:7px 12px;border-radius:9px;transition:.15s;
+  }
+  .range button:hover{color:var(--ink);border-color:#2a3d4f}
+  .range button.on{background:linear-gradient(180deg,#0f5163,#0c3d4b);color:#d6fbff;border-color:#1d7186}
+
+  /* ---------- stat tiles ---------- */
+  .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+  .tile{
+    position:relative;overflow:hidden;
+    background:linear-gradient(160deg,var(--panel-2),var(--panel));
+    border:1px solid var(--line);border-radius:var(--radius);
+    padding:15px 16px 0;
+  }
+  .tile::after{
+    content:"";position:absolute;inset:0 0 auto 0;height:2px;
+    background:linear-gradient(90deg,var(--cyan),transparent 70%);opacity:.65;
+  }
+  .tile small{display:block;color:var(--ink-faint);font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:600}
+  .tile .v{margin:7px 0 2px;font-size:clamp(21px,2.3vw,27px);font-weight:600;letter-spacing:-.02em}
+  .tile .d{font-size:11.5px;color:var(--ink-dim);margin-bottom:10px}
+  .tile .d b{color:var(--green);font-weight:600}
+  .tile .d b.dn{color:var(--rose)}
+  .spark{display:flex;align-items:flex-end;gap:2px;height:34px;margin:0 -16px;padding:0 16px}
+  .spark i{flex:1;background:linear-gradient(180deg,#22d3ee55,#22d3ee12);border-radius:2px 2px 0 0;min-height:2px}
+  .spark i.hi{background:linear-gradient(180deg,#22d3eebb,#22d3ee30)}
+
+  /* ---------- spectrum strip ---------- */
+  .panel{
+    background:linear-gradient(180deg,var(--panel-2),var(--panel));
+    border:1px solid var(--line);border-radius:var(--radius);
+  }
+  .panel > h2{
+    margin:0;padding:13px 16px;font-size:12.5px;font-weight:650;
+    letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);
+    border-bottom:1px solid var(--line-soft);
+    display:flex;align-items:center;gap:10px;
+  }
+  .panel > h2 .tag{
+    margin-left:auto;font-size:10.5px;letter-spacing:.06em;font-weight:600;
+    color:var(--cyan);background:#0a2a35;border:1px solid #16505f;padding:3px 8px;border-radius:6px;text-transform:none;
+  }
+  .spectrum{padding:14px 16px 16px}
+  .bars{display:flex;align-items:flex-end;gap:2px;height:78px}
+  .bars i{
+    flex:1;min-width:2px;border-radius:2px 2px 0 0;
+    background:linear-gradient(180deg,#67e8f9,#0e7490);
+    opacity:.85;
+  }
+  .axis{display:flex;justify-content:space-between;margin-top:9px;color:var(--ink-faint);font-size:10.5px;letter-spacing:.03em}
+  .bands{display:flex;gap:7px;flex-wrap:wrap;margin-top:14px}
+  .band{
+    font-size:11.5px;font-weight:600;letter-spacing:.03em;
+    padding:5px 10px;border-radius:7px;border:1px solid #1b3040;background:#0b1724;color:var(--ink-dim);
+  }
+  .band.on{background:#0d3d4b;border-color:#1e6f85;color:#b9f3ff}
+  .band .c{margin-left:6px;color:var(--ink-faint);font-weight:500}
+
+  /* ---------- main grid ---------- */
+  .grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:16px;margin-top:16px;align-items:start}
+  /* Grid children default to min-width:auto, which lets the wide table push the
+     column past the viewport on small screens. */
+  .grid > *{min-width:0}
+  .panel{min-width:0}
+  .table-wrap{max-width:100%;overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  thead th{
+    text-align:left;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--ink-faint);font-weight:650;padding:10px 14px;
+    border-bottom:1px solid var(--line);white-space:nowrap;background:#0c1622;
+  }
+  tbody td{padding:11px 14px;border-bottom:1px solid var(--line-soft);vertical-align:middle;white-space:nowrap}
+  tbody tr:hover{background:#101d2a}
+  tbody tr:last-child td{border-bottom:0}
+  .tg{display:flex;flex-direction:column;line-height:1.25}
+  .tg b{font-weight:600;font-size:13.5px}
+  .tg span{font-size:11px;color:var(--ink-faint)}
+  .call{
+    display:inline-block;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;font-weight:600;
+    color:#a5f3fc;background:#0a2b36;border:1px solid #14505f;padding:2px 7px;border-radius:5px;
+  }
+  .meter{display:flex;align-items:center;gap:8px;min-width:110px}
+  .meter .track{flex:1;display:block;height:5px;border-radius:99px;background:#16232f;overflow:hidden}
+  .meter .fill{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#0891b2,#22d3ee)}
+  .meter span{font-size:11.5px;color:var(--ink-dim);min-width:44px;text-align:right}
+  .side{display:flex;flex-direction:column;gap:16px}
+  .rank{list-style:none;margin:0;padding:8px 16px 14px}
+  .rank li{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px dashed #16232f}
+  .rank li:last-child{border-bottom:0}
+  .rank .pos{width:19px;font-size:11.5px;color:var(--ink-faint);text-align:right;font-weight:600}
+  .rank .who{flex:1;min-width:0}
+  .rank .who b{display:block;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12.5px;font-weight:600}
+  .rank .who span{font-size:11px;color:var(--ink-faint)}
+  .rank .val{font-size:12px;color:var(--cyan);font-weight:600}
+  .drift{padding:14px 16px 16px}
+  .drift svg{display:block;width:100%;height:92px}
+  .legend{display:flex;gap:14px;margin-top:10px;font-size:11px;color:var(--ink-faint);flex-wrap:wrap}
+  .legend i{display:inline-block;width:9px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+  footer{margin-top:26px;padding-top:16px;border-top:1px solid var(--line-soft);color:var(--ink-faint);font-size:12px;display:flex;gap:14px;flex-wrap:wrap}
+  footer a{color:var(--ink-dim);text-decoration:none}
+  footer a:hover{color:var(--cyan)}
+
+  /* ---------- responsive ---------- */
+  @media (max-width:1080px){
+    .grid{grid-template-columns:1fr}
+    .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
+  @media (max-width:720px){
+    .wrap{padding:14px 13px 76px}
+    header.top{gap:12px;padding:12px 13px}
+    nav.main{margin-left:0;width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:2px;scrollbar-width:none}
+    nav.main::-webkit-scrollbar{display:none}
+    nav.main a{padding:7px 11px;font-size:12.5px}
+    .live-pill{display:none}
+    .range{margin-left:0;width:100%}
+    h1{font-size:21px}
+    /* Two-up stat tiles keep the dashboard compact on a phone. */
+    .stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .tile{padding:12px 12px 0}
+    .tile .v{font-size:19px;margin:5px 0 1px}
+    .tile .d{font-size:10.5px;margin-bottom:8px}
+    .tile .spark{margin:0 -12px;padding:0 12px;height:26px}
+    .panel > h2{font-size:11.5px;padding:11px 13px}
+    thead th,tbody td{padding:9px 11px}
+    .badge{right:8px;bottom:8px;left:8px;justify-content:center;font-size:11px}
+  }
+  @media (max-width:380px){
+    .stats{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <img src="assets/brandmeister-logo-transparent.png" alt="BrandMeister logo">
+      <div class="brand-txt">
+        <strong>BrandMeister Lastheard</strong>
+        <span>Live network statistics</span>
+      </div>
+    </div>
+    <nav class="main">
+      <a href="#" class="on">Dashboard</a>
+      <a href="#">Live QSOs</a>
+      <a href="#">Reports</a>
+      <a href="#">Talkgroups</a>
+      <a href="#">About</a>
+    </nav>
+    <span class="live-pill"><span class="dot"></span>Collector online</span>
+  </header>
+
+  <section class="hero">
+    <div class="hero-head">
+      <div>
+        <h1>Network activity <em>— last 7 days</em></h1>
+        <p>Every completed talkgroup session on the BrandMeister network, decoded from
+           the LastHeard stream. Kerchunks under 3&nbsp;s are excluded.</p>
+      </div>
+      <div class="range">
+        <button>24h</button><button>7d</button><button class="on">30d</button><button>90d</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="stats">
+    <div class="tile">
+      <small>Total QSOs</small>
+      <div class="v num">245,816</div>
+      <div class="d"><b>+4.2%</b> vs previous week</div>
+      <div class="spark">
+        <i style="height:38%"></i><i style="height:52%"></i><i style="height:44%"></i><i style="height:61%"></i>
+        <i style="height:57%"></i><i style="height:72%"></i><i class="hi" style="height:88%"></i><i style="height:79%"></i>
+        <i style="height:66%"></i><i style="height:71%"></i><i style="height:83%"></i><i class="hi" style="height:93%"></i>
+      </div>
+    </div>
+    <div class="tile">
+      <small>Unique callsigns</small>
+      <div class="v num">10,132</div>
+      <div class="d"><b>+318</b> new stations heard</div>
+      <div class="spark">
+        <i style="height:46%"></i><i style="height:55%"></i><i class="hi" style="height:70%"></i><i style="height:63%"></i>
+        <i style="height:58%"></i><i style="height:67%"></i><i style="height:74%"></i><i class="hi" style="height:81%"></i>
+        <i style="height:69%"></i><i style="height:77%"></i><i style="height:72%"></i><i style="height:79%"></i>
+      </div>
+    </div>
+    <div class="tile">
+      <small>Active talkgroups</small>
+      <div class="v num">1,061</div>
+      <div class="d"><b class="dn">−12</b> fewer than last week</div>
+      <div class="spark">
+        <i style="height:72%"></i><i style="height:66%"></i><i style="height:70%"></i><i class="hi" style="height:78%"></i>
+        <i style="height:64%"></i><i style="height:59%"></i><i style="height:62%"></i><i style="height:57%"></i>
+        <i style="height:61%"></i><i class="hi" style="height:68%"></i><i style="height:55%"></i><i style="height:52%"></i>
+      </div>
+    </div>
+    <div class="tile">
+      <small>Total talk time</small>
+      <div class="v num">412:37:19</div>
+      <div class="d">avg. 1.68&nbsp;s per kerchunk kept</div>
+      <div class="spark">
+        <i style="height:41%"></i><i style="height:49%"></i><i style="height:58%"></i><i class="hi" style="height:66%"></i>
+        <i style="height:54%"></i><i style="height:62%"></i><i style="height:70%"></i><i class="hi" style="height:76%"></i>
+        <i style="height:65%"></i><i style="height:73%"></i><i style="height:80%"></i><i style="height:68%"></i>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" style="margin-top:16px">
+    <h2>Spectrum occupancy
+      <span class="tag">144&nbsp;MHz · 432&nbsp;MHz</span>
+    </h2>
+    <div class="spectrum">
+      <div class="bars">
+        <i style="height:22%"></i><i style="height:31%"></i><i style="height:18%"></i><i style="height:44%"></i>
+        <i style="height:38%"></i><i style="height:57%"></i><i style="height:49%"></i><i style="height:66%"></i>
+        <i style="height:52%"></i><i style="height:74%"></i><i style="height:61%"></i><i style="height:88%"></i>
+        <i style="height:69%"></i><i style="height:80%"></i><i style="height:58%"></i><i style="height:47%"></i>
+        <i style="height:63%"></i><i style="height:72%"></i><i style="height:55%"></i><i style="height:41%"></i>
+        <i style="height:34%"></i><i style="height:48%"></i><i style="height:59%"></i><i style="height:43%"></i>
+        <i style="height:29%"></i><i style="height:37%"></i><i style="height:51%"></i><i style="height:46%"></i>
+        <i style="height:26%"></i><i style="height:19%"></i>
+      </div>
+      <div class="axis"><span>144.000</span><span>144.500</span><span>145.000</span><span>145.500</span><span>146.000</span></div>
+      <div class="bands">
+        <span class="band on">2&nbsp;m<span class="c">38%</span></span>
+        <span class="band on">70&nbsp;cm<span class="c">29%</span></span>
+        <span class="band">23&nbsp;cm<span class="c">11%</span></span>
+        <span class="band">4&nbsp;m<span class="c">6%</span></span>
+        <span class="band">HF<span class="c">9%</span></span>
+        <span class="band">Other<span class="c">7%</span></span>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>Busiest talkgroups <span class="tag">top 6 of 1,061</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Talkgroup</th><th>QSOs</th><th>Share</th><th>Stations</th><th>Last heard</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="tg"><b>Worldwide</b><span>TG 91 · Global</span></span></td>
+              <td class="num">48,209</td>
+              <td><span class="meter"><span class="track"><span class="fill" style="width:100%"></span></span><span>19.6%</span></span></td>
+              <td class="num">6,481</td><td class="num">12 s ago</td>
+            </tr>
+            <tr>
+              <td><span class="tg"><b>Spain</b><span>TG 214 · Europe</span></span></td>
+              <td class="num">31,775</td>
+              <td><span class="meter"><span class="track"><span class="fill" style="width:66%"></span></span><span>12.9%</span></span></td>
+              <td class="num">2,914</td><td class="num">41 s ago</td>
+            </tr>
+            <tr>
+              <td><span class="tg"><b>Alicante</b><span>TG 21403 · Europe</span></span></td>
+              <td class="num">24,118</td>
+              <td><span class="meter"><span class="track"><span class="fill" style="width:50%"></span></span><span>9.8%</span></span></td>
+              <td class="num">1,338</td><td class="num">2 min ago</td>
+            </tr>
+            <tr>
+              <td><span class="tg"><b>Deutschland</b><span>TG 262 · Europe</span></span></td>
+              <td class="num">19,640</td>
+              <td><span class="meter"><span class="track"><span class="fill" style="width:41%"></span></span><span>8.0%</span></span></td>
+              <td class="num">2,207</td><td class="num">18 s ago</td>
+            </tr>
+            <tr>
+              <td><span class="tg"><b>United Kingdom</b><span>TG 235 · Europe</span></span></td>
+              <td class="num">14,882</td>
+              <td><span class="meter"><span class="track"><span class="fill" style="width:31%"></span></span><span>6.1%</span></span></td>
+              <td class="num">1,764</td><td class="num">3 min ago</td>
+            </tr>
+            <tr>
+              <td><span class="tg"><b>USA</b><span>TG 3100 · North America</span></span></td>
+              <td class="num">12,455</td>
+              <td><span class="meter"><span class="track"><span class="fill" style="width:26%"></span></span><span>5.1%</span></span></td>
+              <td class="num">1,902</td><td class="num">9 s ago</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="side">
+      <section class="panel">
+        <h2>Most active stations</h2>
+        <ol class="rank">
+          <li><span class="pos">1</span><span class="who"><b>EA7KLK</b><span>Spain</span></span><span class="val num">1,284</span></li>
+          <li><span class="pos">2</span><span class="who"><b>DL1ABC</b><span>Germany</span></span><span class="val num">1,109</span></li>
+          <li><span class="pos">3</span><span class="who"><b>M0XYZ</b><span>United Kingdom</span></span><span class="val num">986</span></li>
+          <li><span class="pos">4</span><span class="who"><b>F4ABC</b><span>France</span></span><span class="val num">901</span></li>
+          <li><span class="pos">5</span><span class="who"><b>IZ2XYZ</b><span>Italy</span></span><span class="val num">874</span></li>
+        </ol>
+      </section>
+
+      <section class="panel">
+        <h2>Traffic rhythm <span class="tag">QSOs / hour</span></h2>
+        <div class="drift">
+          <svg viewBox="0 0 320 92" preserveAspectRatio="none" aria-label="Hourly QSO trend">
+            <defs>
+              <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#22d3ee" stop-opacity=".38"/>
+                <stop offset="100%" stop-color="#22d3ee" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,74 L22,66 L44,70 L66,54 L88,58 L110,40 L132,46 L154,28 L176,34 L198,20 L220,30 L242,44 L264,38 L286,52 L308,60 L320,58 L320,92 L0,92 Z" fill="url(#fill)"/>
+            <path d="M0,74 L22,66 L44,70 L66,54 L88,58 L110,40 L132,46 L154,28 L176,34 L198,20 L220,30 L242,44 L264,38 L286,52 L308,60 L320,58"
+                  fill="none" stroke="#22d3ee" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+            <circle cx="198" cy="20" r="3.2" fill="#fbbf24"/>
+          </svg>
+          <div class="legend">
+            <span><i style="background:#22d3ee"></i>QSOs per hour</span>
+            <span><i style="background:#fbbf24"></i>Peak 18:00 UTC</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    <span>Mockup 1 of 4 · Spectrum</span>
+    <span>Sample data — not production figures</span>
+    <span style="margin-left:auto"><a href="index.html">← All mockups</a></span>
+  </footer>
+</div>
+
+<div class="badge"><b>Mockup 1</b> Spectrum · <a href="index.html">all mockups</a></div>
+</body>
+</html>

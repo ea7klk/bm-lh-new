@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard mockups · BrandMeister Lastheard</title>
+<style>
+  :root{
+    --bg:#101317;
+    --panel:#171b21;
+    --panel-2:#1d222a;
+    --line:#2a313b;
+    --ink:#e9eef4;
+    --dim:#9aa6b4;
+    --faint:#6c7885;
+    --accent:#dd4b39;
+    --accent-2:#22d3ee;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1000px 520px at 85% -8%, #22303f 0%, transparent 60%),
+      radial-gradient(760px 480px at 0% 0%, #2a1d1c 0%, transparent 55%),
+      var(--bg);
+    color:var(--ink);
+    font:15px/1.6 Inter,"Segoe UI",system-ui,-apple-system,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:34px 22px 70px}
+
+  header{display:flex;align-items:center;gap:15px;flex-wrap:wrap;margin-bottom:26px}
+  header img{width:44px;height:44px;object-fit:contain;filter:drop-shadow(0 4px 14px #dd4b3944)}
+  header .t{line-height:1.2;min-width:0}
+  header .t strong{display:block;font-size:17px;font-weight:700;letter-spacing:-.01em}
+  header .t span{display:block;font-size:11.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);margin-top:3px}
+  header .back{margin-left:auto;font-size:12.5px;color:var(--dim);text-decoration:none;border:1px solid var(--line);padding:8px 13px;border-radius:9px;background:#141a21}
+  header .back:hover{color:var(--ink);border-color:#3a4553}
+
+  .intro{max-width:70ch;margin-bottom:30px}
+  .intro h1{margin:0 0 10px;font-size:clamp(26px,3.6vw,38px);font-weight:750;letter-spacing:-.035em;line-height:1.1}
+  .intro h1 em{font-style:normal;color:var(--accent)}
+  .intro p{margin:0;color:var(--dim);font-size:14.5px}
+  .intro .note{
+    margin-top:16px;padding:12px 15px;border-left:3px solid var(--accent);
+    background:#1a1513;color:#cbb8b2;font-size:12.5px;border-radius:0 8px 8px 0;
+  }
+
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+  .grid > *{min-width:0}
+
+  .card{
+    display:flex;flex-direction:column;
+    background:linear-gradient(180deg,var(--panel-2),var(--panel));
+    border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
+    transition:transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+  }
+  .card:hover{transform:translateY(-3px);border-color:#3c4859;box-shadow:0 18px 44px #00000055}
+  .shot{display:block;position:relative;background:#0c0f13;border-bottom:1px solid var(--line);overflow:hidden}
+  .shot img{display:block;width:100%;height:auto;transition:transform .3s ease}
+  .card:hover .shot img{transform:scale(1.015)}
+  /* Badges sit at the bottom of the thumbnail so they never cover the
+     BrandMeister wordmark inside the preview. */
+  .shot::after{
+    content:"";position:absolute;inset:auto 0 0 0;height:64px;pointer-events:none;
+    background:linear-gradient(180deg,transparent,#05070a99);
+  }
+  .shot .no{
+    position:absolute;left:10px;bottom:10px;z-index:2;
+    background:#0b0e12d9;border:1px solid #ffffff26;color:#fff;
+    font-size:10.5px;font-weight:700;letter-spacing:.08em;padding:3px 8px;border-radius:999px;
+    backdrop-filter:blur(6px);
+  }
+  .shot .bm{
+    position:absolute;right:10px;bottom:10px;z-index:2;
+    background:#dd4b39;color:#fff;font-size:10px;font-weight:700;
+    letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:999px;
+  }
+
+  .body{padding:16px 18px 18px;display:flex;flex-direction:column;flex:1}
+  .body h2{margin:0 0 3px;font-size:17px;font-weight:700;letter-spacing:-.015em}
+  .body .tagline{margin:0 0 10px;font-size:11.5px;color:var(--faint);letter-spacing:.05em;text-transform:uppercase;font-weight:600}
+  .body p{margin:0 0 14px;font-size:13.5px;color:var(--dim);line-height:1.62}
+
+  .swatches{display:flex;gap:5px;margin-bottom:14px;flex-wrap:wrap}
+  .sw{width:19px;height:19px;border-radius:5px;border:1px solid #ffffff1f}
+  .swatches .lbl{font-size:11px;color:var(--faint);align-self:center;margin-left:4px}
+
+  .meta{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+  .pill{font-size:11px;color:#b9c6d4;background:#1f2733;border:1px solid #2d3746;padding:3px 9px;border-radius:999px}
+  .pill.bm{color:#f0b3aa;background:#2b1a17;border-color:#5a2a23}
+
+  .open{
+    margin-top:auto;display:inline-flex;align-items:center;gap:8px;align-self:flex-start;
+    text-decoration:none;font-size:13px;font-weight:650;color:#0d1117;
+    background:linear-gradient(135deg,#f2f6fa,#cfdae6);padding:9px 16px;border-radius:9px;
+  }
+  .open:hover{background:linear-gradient(135deg,#fff,#dde7f1)}
+  .open span{font-size:14px}
+
+  footer{margin-top:34px;padding-top:18px;border-top:1px solid var(--line);color:var(--faint);font-size:12.5px;display:flex;gap:16px;flex-wrap:wrap}
+  footer a{color:var(--dim);text-decoration:none}
+  footer a:hover{color:var(--ink)}
+
+  @media (max-width:860px){ .grid{grid-template-columns:1fr} }
+  @media (max-width:560px){
+    .wrap{padding:22px 14px 60px}
+    header .back{margin-left:0}
+    .intro h1{font-size:26px}
+    .body{padding:14px 15px 16px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <img src="assets/brandmeister-logo-transparent.png" alt="BrandMeister logo">
+    <div class="t">
+      <strong>BrandMeister Lastheard</strong>
+      <span>Dashboard redesign · mockups</span>
+    </div>
+    <a class="back" href="/">← Back to the live site</a>
+  </header>
+
+  <section class="intro">
+    <h1>Four directions for a <em>new dashboard</em></h1>
+    <p>Static, self-contained mockups exploring how the LastHeard statistics page could look
+       and behave. Each is a single HTML file with no build step, no framework and no network
+       requests — open one and resize the window to see it reflow.</p>
+    <div class="note">
+      <strong>Sample data.</strong> Numbers, callsigns and talkgroups in these mockups are
+      illustrative, not production figures. Mockups 3 and 4 use the colour values and shell
+      layout taken from brandmeister.network's own stylesheet, so the redesign sits inside the
+      wider BrandMeister identity rather than competing with it.
+    </div>
+  </section>
+
+  <div class="grid">
+
+    <article class="card">
+      <a class="shot" href="spectrum.html" aria-label="Open mockup 1, Spectrum">
+        <span class="no">01</span>
+        <img src="assets/preview-spectrum.jpg" alt="Spectrum mockup preview" loading="lazy">
+      </a>
+      <div class="body">
+        <h2>Spectrum</h2>
+        <p class="tagline">Dark · SDR-inspired</p>
+        <p>A night-mode operator console: spectrum occupancy as the hero element, glowing
+           stat tiles and a cyan-on-ink palette borrowed from SDR software. Best if the
+           site is used late at night alongside rig control software.</p>
+        <div class="swatches">
+          <span class="sw" style="background:#070b10"></span>
+          <span class="sw" style="background:#0f1620"></span>
+          <span class="sw" style="background:#22d3ee"></span>
+          <span class="sw" style="background:#fbbf24"></span>
+          <span class="lbl">ink · panel · cyan · amber</span>
+        </div>
+        <div class="meta">
+          <span class="pill">Dark UI</span><span class="pill">Spectrum / waterfall</span>
+          <span class="pill">Top nav</span><span class="pill">2-up tiles on mobile</span>
+        </div>
+        <a class="open" href="spectrum.html">Open mockup <span>→</span></a>
+      </div>
+    </article>
+
+    <article class="card">
+      <a class="shot" href="receiver.html" aria-label="Open mockup 2, Receiver">
+        <span class="no">02</span>
+        <img src="assets/preview-receiver.jpg" alt="Receiver mockup preview" loading="lazy">
+      </a>
+      <div class="body">
+        <h2>Receiver</h2>
+        <p class="tagline">Light · technical manual</p>
+        <p>Paper-white and typographic, with the key figures on a backlit transceiver
+           readout and a band-plan strip showing where traffic sits. Reads like the
+           front panel of a rig, and prints cleanly if anyone still does that.</p>
+        <div class="swatches">
+          <span class="sw" style="background:#f6f4ee"></span>
+          <span class="sw" style="background:#fffdf8"></span>
+          <span class="sw" style="background:#b45309"></span>
+          <span class="sw" style="background:#101b14"></span>
+          <span class="lbl">paper · card · amber · LCD</span>
+        </div>
+        <div class="meta">
+          <span class="pill">Light UI</span><span class="pill">LCD readout</span>
+          <span class="pill">Band plan</span><span class="pill">Table → cards on mobile</span>
+        </div>
+        <a class="open" href="receiver.html">Open mockup <span>→</span></a>
+      </div>
+    </article>
+
+    <article class="card">
+      <a class="shot" href="bm-classic.html" aria-label="Open mockup 3, BrandMeister Classic">
+        <span class="no">03</span>
+        <span class="bm">BrandMeister</span>
+        <img src="assets/preview-bm-classic.jpg" alt="BrandMeister Classic mockup preview" loading="lazy">
+      </a>
+      <div class="body">
+        <h2>BrandMeister Classic</h2>
+        <p class="tagline">BrandMeister palette · light shell</p>
+        <p>The familiar admin shell: 230&nbsp;px dark sidebar, 50&nbsp;px white header,
+           <code>#ecf0f5</code> frame and the <code>#dd4b39</code> accent, with coloured
+           summary tiles and bordered boxes. The smallest jump for existing users.</p>
+        <div class="swatches">
+          <span class="sw" style="background:#222d32"></span>
+          <span class="sw" style="background:#dd4b39"></span>
+          <span class="sw" style="background:#ecf0f5"></span>
+          <span class="sw" style="background:#d2d6de"></span>
+          <span class="lbl">sidebar · accent · frame · border</span>
+        </div>
+        <div class="meta">
+          <span class="pill bm">BM tokens</span><span class="pill bm">BM layout</span>
+          <span class="pill">AdminLTE-style shell</span><span class="pill">Off-canvas sidebar</span>
+        </div>
+        <a class="open" href="bm-classic.html">Open mockup <span>→</span></a>
+      </div>
+    </article>
+
+    <article class="card">
+      <a class="shot" href="bm-rail.html" aria-label="Open mockup 4, BrandMeister Rail">
+        <span class="no">04</span>
+        <span class="bm">BrandMeister</span>
+        <img src="assets/preview-bm-rail.jpg" alt="BrandMeister Rail mockup preview" loading="lazy">
+      </a>
+      <div class="body">
+        <h2>BrandMeister Rail</h2>
+        <p class="tagline">BrandMeister palette · dark rail</p>
+        <p>The same BrandMeister colours in their dark variant, rebuilt around a 74&nbsp;px icon
+           rail and a dense live feed. On phones the rail becomes a bottom navigation bar,
+           which is where thumbs actually are.</p>
+        <div class="swatches">
+          <span class="sw" style="background:#2d2d2d"></span>
+          <span class="sw" style="background:#363636"></span>
+          <span class="sw" style="background:#202020"></span>
+          <span class="sw" style="background:#dd4b39"></span>
+          <span class="lbl">frame · surface · rail · accent</span>
+        </div>
+        <div class="meta">
+          <span class="pill bm">BM tokens, dark</span><span class="pill bm">BM layout</span>
+          <span class="pill">Icon rail</span><span class="pill">Bottom nav on mobile</span>
+        </div>
+        <a class="open" href="bm-rail.html">Open mockup <span>→</span></a>
+      </div>
+    </article>
+
+  </div>
+
+  <footer>
+    <span>Static mockups — no tracking, no external assets</span>
+    <span>Logo: brandmeister.network</span>
+    <span style="margin-left:auto"><a href="/">Live site</a></span>
+  </footer>
+</div>
+</body>
+</html>

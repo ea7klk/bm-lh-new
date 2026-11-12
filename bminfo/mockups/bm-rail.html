@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup 4 · BrandMeister Rail — Lastheard</title>
+<style>
+  /* Dark variants of brandmeister.network's own tokens:
+     --bm-shell-frame-bg #2d2d2d, --bm-shell-surface #363636,
+     --bm-shell-text #e0e0e0, --bm-shell-sidebar-bg #202020,
+     --bm-shell-sidebar-active-bg #363636, --bm-shell-border #444,
+     --bm-shell-accent #dd4b39. */
+  :root{
+    --frame:#2d2d2d;
+    --surface:#363636;
+    --surface-2:#3c3c3c;
+    --text:#e0e0e0;
+    --muted:#a0a0a0;
+    --faint:#787878;
+    --border:#444;
+    --rail:#202020;
+    --accent:#dd4b39;
+    --accent-hi:#e8695a;
+    --ok:#7bc98d;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--frame);color:var(--text);
+    font:14px/20px "Source Sans Pro","Helvetica Neue",Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+  a{color:var(--accent-hi)}
+
+  .badge{
+    position:fixed;right:12px;bottom:12px;z-index:90;background:#181818f2;color:#ddd;
+    padding:8px 12px;font-size:11.5px;border:1px solid var(--border);border-radius:2px;
+  }
+  .badge b{color:var(--accent-hi)}
+  .badge a{color:#bbb;text-decoration:none;border-bottom:1px solid #ffffff33}
+
+  .shell{display:flex;align-items:flex-start;min-height:100vh}
+
+  /* ---------- icon rail ---------- */
+  .rail{
+    position:sticky;top:0;height:100vh;width:74px;flex:none;background:var(--rail);
+    display:flex;flex-direction:column;align-items:center;gap:2px;
+    padding:10px 0 14px;border-right:1px solid #1a1a1a;z-index:40;
+  }
+  .rail .logo{
+    width:44px;height:44px;display:grid;place-items:center;margin-bottom:12px;
+    border-bottom:1px solid #2e2e2e;padding-bottom:12px;
+  }
+  .rail .logo img{width:30px;height:30px;object-fit:contain}
+  .rail a{
+    position:relative;width:52px;height:46px;display:grid;place-items:center;
+    color:#9a9a9a;text-decoration:none;font-size:17px;border-radius:2px;
+    border-left:3px solid transparent;
+  }
+  .rail a:hover{background:#2a2a2a;color:#e8e8e8}
+  .rail a.on{background:var(--surface);color:#fff;border-left-color:var(--accent)}
+  .rail a.on::after{content:"";position:absolute;left:-3px;top:8px;bottom:8px;width:3px;background:var(--accent)}
+  .rail a .tip{
+    position:absolute;left:60px;white-space:nowrap;background:#1a1a1a;border:1px solid var(--border);
+    color:#e0e0e0;font-size:11.5px;padding:3px 8px;opacity:0;pointer-events:none;transition:opacity .12s;z-index:5;
+  }
+  .rail a:hover .tip{opacity:1}
+  .rail .sep{width:32px;height:1px;background:#2e2e2e;margin:8px 0}
+  .rail .grow{flex:1}
+  .rail .av{
+    width:34px;height:34px;border-radius:50%;background:var(--accent);color:#fff;
+    display:grid;place-items:center;font-size:11.5px;font-weight:700;margin-top:8px;
+  }
+
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+
+  /* ---------- header ---------- */
+  .topbar{
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    padding:12px 18px;background:var(--surface);border-bottom:1px solid var(--border);
+    position:sticky;top:0;z-index:30;
+  }
+  .topbar .ttl{display:flex;flex-direction:column;line-height:1.25}
+  .topbar .ttl b{font-size:16px;font-weight:600;color:#f0f0f0}
+  .topbar .ttl span{font-size:11.5px;color:var(--faint)}
+  .search{
+    margin-left:auto;display:flex;align-items:center;gap:7px;
+    background:#2a2a2a;border:1px solid var(--border);padding:6px 10px;min-width:210px;
+  }
+  .search input{
+    background:transparent;border:0;color:var(--text);font:inherit;font-size:12.5px;outline:none;width:100%;
+  }
+  .search input::placeholder{color:#7a7a7a}
+  .status{
+    display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;
+    padding:6px 10px;border:1px solid #3d5a44;background:#26332a;color:#a9e0b7;
+  }
+  .status i{width:7px;height:7px;border-radius:50%;background:var(--ok);display:inline-block;animation:bl 2.2s infinite}
+  @keyframes bl{0%,100%{opacity:1}50%{opacity:.3}}
+  .iconbtn{
+    width:32px;height:30px;display:grid;place-items:center;background:#2a2a2a;
+    border:1px solid var(--border);color:#c8c8c8;cursor:pointer;font-size:13px;
+  }
+  .iconbtn:hover{background:#333;color:#fff}
+
+  /* ---------- content ---------- */
+  .content{padding:18px;flex:1}
+  .bar-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .bar-head h1{margin:0;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:700}
+  .seg{display:flex;margin-left:auto;border:1px solid var(--border);background:#2a2a2a}
+  .seg button{
+    font:inherit;font-size:11.5px;font-weight:600;background:transparent;border:0;
+    border-left:1px solid var(--border);color:#adadad;padding:6px 12px;cursor:pointer;
+  }
+  .seg button:first-child{border-left:0}
+  .seg button:hover{background:#333;color:#eee}
+  .seg button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+  /* ---------- KPI strip ---------- */
+  .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--border);border:1px solid var(--border);margin-bottom:16px}
+  .kpis > *{min-width:0}
+  .kpi{background:var(--surface);padding:13px 15px}
+  .kpi .l{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:700}
+  .kpi .v{font-size:24px;font-weight:600;color:#f2f2f2;margin:4px 0 1px;letter-spacing:-.4px}
+  .kpi .s{font-size:11px;color:var(--muted)}
+  .kpi .s b{color:var(--ok);font-weight:600}
+  .kpi .s b.dn{color:var(--accent-hi)}
+
+  /* ---------- waterfall ---------- */
+  .wf{
+    background:var(--surface);border:1px solid var(--border);padding:12px 15px 10px;margin-bottom:16px;
+  }
+  .wf-head{display:flex;align-items:baseline;gap:10px;margin-bottom:9px}
+  .wf-head b{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .wf-head span{margin-left:auto;font-size:11px;color:var(--faint)}
+  .wf-bars{display:flex;align-items:flex-end;gap:2px;height:44px}
+  .wf-bars i{flex:1;min-height:2px;background:#7a2b21}
+  .wf-bars i.hi{background:var(--accent)}
+  .wf-bars i.top{background:var(--accent-hi)}
+  .wf-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:10.5px;color:var(--faint)}
+  .band{display:inline-flex;align-items:center;gap:5px}
+  .band u{width:8px;height:8px;background:#7a2b21;display:inline-block}
+  .band u.hi{background:var(--accent)}
+
+  /* ---------- main grid ---------- */
+  .cols{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:16px;align-items:start}
+  .cols > *{min-width:0}
+  .panel{background:var(--surface);border:1px solid var(--border)}
+  .panel-head{
+    display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);
+    background:var(--surface-2);
+  }
+  .panel-head h2{margin:0;font-size:13.5px;font-weight:600;color:#efefef}
+  .panel-head .sub{margin-left:auto;font-size:11px;color:var(--faint)}
+  .panel-body{overflow-x:auto}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{
+    text-align:left;padding:8px 12px;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);font-weight:700;background:#303030;border-bottom:1px solid var(--border);white-space:nowrap;
+  }
+  tbody td{padding:9px 12px;border-bottom:1px solid #3e3e3e;white-space:nowrap;color:#d8d8d8}
+  tbody tr:hover td{background:#3b3b3b}
+  tbody tr:last-child td{border-bottom:0}
+  .tg{font-weight:600;color:#f0f0f0}
+  .tgid{display:block;font-size:10.5px;color:var(--faint);margin-top:1px}
+  .tag{
+    display:inline-block;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    padding:1px 6px;border:1px solid #4a4a4a;color:#bdbdbd;background:#2e2e2e;
+  }
+  .tag.hot{border-color:var(--accent);color:var(--accent-hi);background:#3a2320}
+  .call{
+    display:inline-block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;font-weight:600;
+    background:#2a2a2a;border:1px solid #4a4a4a;padding:1px 6px;color:#e6e6e6;
+  }
+  .num-r{text-align:right}
+  .age{color:var(--muted)}
+  .age.new{color:var(--accent-hi);font-weight:600}
+
+  .side{display:flex;flex-direction:column;gap:16px}
+  .rows{list-style:none;margin:0;padding:0}
+  .rows li{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid #3e3e3e}
+  .rows li:last-child{border-bottom:0}
+  .rows .rk{width:16px;font-size:10.5px;color:var(--faint);text-align:right;font-weight:700}
+  .rows .who{flex:1;min-width:0}
+  .rows .who b{display:block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#eee}
+  .rows .who span{font-size:10.5px;color:var(--faint)}
+  .rows .v{font-size:12px;color:var(--accent-hi);font-weight:600}
+
+  .sbar{padding:12px 14px}
+  .sbar .row{display:flex;align-items:center;gap:9px;margin-bottom:9px;font-size:11.5px;color:var(--muted)}
+  .sbar .row span{width:42px;flex:none}
+  .sbar .track{flex:1;height:6px;background:#2a2a2a;border:1px solid #454545}
+  .sbar .fill{display:block;height:100%;background:var(--accent)}
+  .sbar .row b{width:34px;text-align:right;color:#ddd;font-weight:600;font-size:11px}
+
+  .kv{display:grid;grid-template-columns:1fr auto;gap:0}
+  .kv div{padding:8px 14px;border-bottom:1px solid #3e3e3e;font-size:12px}
+  .kv div:nth-child(2n){text-align:right;font-weight:600;color:#eee}
+  .kv div:nth-last-child(-n+2){border-bottom:0}
+  .kv .good{color:var(--ok)}
+
+  footer{margin-top:16px;padding:10px 2px;color:var(--faint);font-size:11.5px;display:flex;gap:14px;flex-wrap:wrap}
+  footer a{color:#bdbdbd;text-decoration:none}
+  footer a:hover{color:var(--accent-hi)}
+
+  /* ---------- responsive ---------- */
+  @media (max-width:1150px){
+    .cols{grid-template-columns:1fr}
+  }
+  @media (max-width:900px){
+    .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+    /* The rail becomes a bottom navigation bar, which is what phones expect. */
+    .shell{display:block}
+    .rail{
+      position:fixed;inset:auto 0 0 0;width:auto;height:56px;flex-direction:row;
+      justify-content:space-around;align-items:center;gap:0;padding:0;
+      border-right:0;border-top:1px solid #1a1a1a;z-index:60;
+    }
+    .rail .logo,.rail .sep,.rail .grow,.rail .av{display:none}
+    .rail a{width:auto;flex:1;height:56px;font-size:16px;border-left:0;border-top:2px solid transparent}
+    .rail a.on{border-left:0;border-top-color:var(--accent)}
+    .rail a.on::after{display:none}
+    .rail a .tip{display:none}
+    .main{padding-bottom:56px}
+    .search{flex:1 1 100%;margin-left:0;order:5;min-width:0}
+    .topbar{padding:10px 13px;gap:10px}
+    .content{padding:13px}
+  }
+  @media (max-width:620px){
+    .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .kpi{padding:10px 11px}
+    .kpi .v{font-size:19px}
+    .bar-head h1{font-size:11.5px}
+    .seg{margin-left:0;width:100%}
+    .seg button{flex:1;padding:7px 0}
+    .badge{left:10px;right:10px;bottom:64px;text-align:center}
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <nav class="rail" aria-label="Main navigation">
+    <span class="logo"><img src="assets/brandmeister-logo-transparent.png" alt="BrandMeister logo"></span>
+    <a href="#" class="on" aria-current="page">▦<span class="tip">Dashboard</span></a>
+    <a href="#">◉<span class="tip">Live QSOs</span></a>
+    <a href="#">▤<span class="tip">Reports</span></a>
+    <a href="#">☰<span class="tip">Talkgroups</span></a>
+    <a href="#">☎<span class="tip">Callsigns</span></a>
+    <span class="sep"></span>
+    <a href="#">⛭<span class="tip">Administration</span></a>
+    <span class="grow"></span>
+    <a href="#">ⓘ<span class="tip">About</span></a>
+    <span class="av">VK</span>
+  </nav>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="ttl">
+        <b>LastHeard statistics</b>
+        <span>BrandMeister network · last 7 days</span>
+      </div>
+      <div class="search">
+        <span aria-hidden="true">⌕</span>
+        <input type="search" placeholder="Search callsign or talkgroup" aria-label="Search">
+      </div>
+      <span class="status"><i></i>Live</span>
+      <button class="iconbtn" aria-label="Language">EN</button>
+      <button class="iconbtn" aria-label="Account">◔</button>
+    </header>
+
+    <div class="content">
+      <div class="bar-head">
+        <h1>Overview</h1>
+        <div class="seg">
+          <button>24h</button><button class="on">7d</button><button>30d</button><button>90d</button>
+        </div>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi">
+          <div class="l">Total QSOs</div>
+          <div class="v mono">245,816</div>
+          <div class="s"><b>+4.2%</b> vs previous week</div>
+        </div>
+        <div class="kpi">
+          <div class="l">Unique callsigns</div>
+          <div class="v mono">10,132</div>
+          <div class="s"><b>+318</b> new stations</div>
+        </div>
+        <div class="kpi">
+          <div class="l">Talkgroups</div>
+          <div class="v mono">1,061</div>
+          <div class="s"><b class="dn">−12</b> vs previous week</div>
+        </div>
+        <div class="kpi">
+          <div class="l">Talk time</div>
+          <div class="v mono">412:37</div>
+          <div class="s">h:m · avg 1.68 s/QSO</div>
+        </div>
+      </div>
+
+      <div class="wf">
+        <div class="wf-head">
+          <b>Activity, last hour</b>
+          <span>QSOs per 5 minutes</span>
+        </div>
+        <div class="wf-bars">
+          <i style="height:28%"></i><i style="height:36%"></i><i style="height:31%"></i><i style="height:47%"></i>
+          <i class="hi" style="height:58%"></i><i style="height:44%"></i><i style="height:52%"></i><i class="hi" style="height:66%"></i>
+          <i style="height:61%"></i><i class="top" style="height:88%"></i><i class="hi" style="height:72%"></i><i style="height:55%"></i>
+          <i style="height:48%"></i><i class="hi" style="height:63%"></i><i style="height:41%"></i><i style="height:34%"></i>
+          <i style="height:29%"></i><i style="height:38%"></i><i style="height:45%"></i><i style="height:33%"></i>
+          <i style="height:26%"></i><i style="height:30%"></i><i style="height:37%"></i><i style="height:43%"></i>
+        </div>
+        <div class="wf-legend">
+          <span class="band"><u></u>quiet</span>
+          <span class="band"><u class="hi"></u>busy</span>
+          <span class="band" style="margin-left:auto">peak 09:15 · 212 QSOs</span>
+        </div>
+      </div>
+
+      <div class="cols">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Most active talkgroups</h2>
+            <span class="sub">top 6 of 1,061</span>
+          </div>
+          <div class="panel-body">
+            <table>
+              <thead>
+                <tr><th>Talkgroup</th><th class="num-r">QSOs</th><th class="num-r">Stations</th><th>Band</th><th class="num-r">Last heard</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="tg">Worldwide</span><span class="tgid">TG 91 · Global</span></td>
+                  <td class="num-r mono">48,209</td><td class="num-r mono">6,481</td>
+                  <td><span class="tag hot">2 m</span></td><td class="num-r age new mono">12 s</td>
+                </tr>
+                <tr>
+                  <td><span class="tg">Spain</span><span class="tgid">TG 214 · Europe</span></td>
+                  <td class="num-r mono">31,775</td><td class="num-r mono">2,914</td>
+                  <td><span class="tag">70 cm</span></td><td class="num-r age mono">41 s</td>
+                </tr>
+                <tr>
+                  <td><span class="tg">Alicante</span><span class="tgid">TG 21403 · Europe</span></td>
+                  <td class="num-r mono">24,118</td><td class="num-r mono">1,338</td>
+                  <td><span class="tag">2 m</span></td><td class="num-r age mono">2 min</td>
+                </tr>
+                <tr>
+                  <td><span class="tg">Deutschland</span><span class="tgid">TG 262 · Europe</span></td>
+                  <td class="num-r mono">19,640</td><td class="num-r mono">2,207</td>
+                  <td><span class="tag hot">2 m</span></td><td class="num-r age new mono">18 s</td>
+                </tr>
+                <tr>
+                  <td><span class="tg">United Kingdom</span><span class="tgid">TG 235 · Europe</span></td>
+                  <td class="num-r mono">14,882</td><td class="num-r mono">1,764</td>
+                  <td><span class="tag">23 cm</span></td><td class="num-r age mono">3 min</td>
+                </tr>
+                <tr>
+                  <td><span class="tg">USA</span><span class="tgid">TG 3100 · North America</span></td>
+                  <td class="num-r mono">12,455</td><td class="num-r mono">1,902</td>
+                  <td><span class="tag">HF</span></td><td class="num-r age mono">9 s</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <div class="side">
+          <section class="panel">
+            <div class="panel-head"><h2>Most active stations</h2><span class="sub">QSOs</span></div>
+            <ul class="rows">
+              <li><span class="rk">1</span><span class="who"><b>EA7KLK</b><span>Spain</span></span><span class="v mono">1,284</span></li>
+              <li><span class="rk">2</span><span class="who"><b>DL1ABC</b><span>Germany</span></span><span class="v mono">1,109</span></li>
+              <li><span class="rk">3</span><span class="who"><b>M0XYZ</b><span>United Kingdom</span></span><span class="v mono">986</span></li>
+              <li><span class="rk">4</span><span class="who"><b>F4ABC</b><span>France</span></span><span class="v mono">901</span></li>
+              <li><span class="rk">5</span><span class="who"><b>IZ2XYZ</b><span>Italy</span></span><span class="v mono">874</span></li>
+            </ul>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head"><h2>Signal report</h2><span class="sub">mock S-meter</span></div>
+            <div class="sbar">
+              <div class="row"><span>2 m</span><span class="track"><span class="fill" style="width:78%"></span></span><b>S8</b></div>
+              <div class="row"><span>70 cm</span><span class="track"><span class="fill" style="width:62%"></span></span><b>S6</b></div>
+              <div class="row"><span>23 cm</span><span class="track"><span class="fill" style="width:34%"></span></span><b>S3</b></div>
+              <div class="row"><span>HF</span><span class="track"><span class="fill" style="width:46%"></span></span><b>S4</b></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head"><h2>Feed health</h2><span class="sub">collector</span></div>
+            <div class="kv">
+              <div>Connection</div><div class="good">Online</div>
+              <div>Heartbeat</div><div class="mono">4 s</div>
+              <div>Kerchunks dropped</div><div class="mono">3.9%</div>
+              <div>Ingestion delay</div><div class="mono">0.8 s</div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <footer>
+        <span>Mockup 4 of 4 · BrandMeister Rail</span>
+        <span>Sample data — not production figures</span>
+        <span style="margin-left:auto"><a href="index.html">← All mockups</a></span>
+      </footer>
+    </div>
+  </div>
+</div>
+
+<div class="badge"><b>Mockup 4</b> BrandMeister Rail · <a href="index.html">all mockups</a></div>
+</body>
+</html>

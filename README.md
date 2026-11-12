@@ -217,6 +217,24 @@ payload volume requires proportional headroom.
 - `/status/` database and collector status
 - `/api/dashboard/` dashboard data
 - `/api/qsos/` recent QSO data
+- `/mockups/` static design mockups with an index
+
+## Design mockups
+
+`bminfo/mockups/` holds four standalone dashboard redesign mockups, served at
+`/mockups/` and openable directly from disk. Each is a single HTML file with
+inline CSS: no build step, no framework, no external requests. Sample data is
+illustrative and does not come from the database.
+
+Two of them (`bm-classic.html`, `bm-rail.html`) reuse the colour values and shell
+layout from brandmeister.network's own stylesheet, so a future redesign can stay
+inside the wider BrandMeister identity. The logo assets under
+`mockups/assets/` come from that site.
+
+The route serves files read-only through `django.views.static.serve`, which
+resolves paths under the mockups root and refuses traversal. It is a preview
+surface, not part of the application, and can be deleted by removing the two
+`mockups` URL patterns and the directory.
 
 ## Development checks
 

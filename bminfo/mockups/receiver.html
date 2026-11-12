@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup 2 · Receiver — BrandMeister Lastheard</title>
+<style>
+  :root{
+    --paper:#f6f4ee;
+    --card:#fffdf8;
+    --rule:#e2ddd2;
+    --rule-soft:#ece8df;
+    --ink:#15171c;
+    --ink-2:#4a4f57;
+    --ink-3:#85898f;
+    --amber:#b45309;
+    --amber-bright:#d97706;
+    --lcd:#101b14;
+    --lcd-ink:#7ef2a8;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font:15px/1.6 "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;font-variant-numeric:tabular-nums}
+  .wrap{max-width:1240px;margin:0 auto;padding:0 24px 72px}
+
+  /* ---------- badge ---------- */
+  .badge{
+    position:fixed;right:14px;bottom:14px;z-index:60;
+    display:flex;align-items:center;gap:9px;
+    background:#15171ce8;color:#f6f4ee;
+    padding:8px 13px;border-radius:4px;font-size:11.5px;letter-spacing:.03em;
+    box-shadow:0 10px 30px #15171c33;
+  }
+  .badge b{color:#fbbf24;font-weight:600}
+  .badge a{color:#d6d2c8;text-decoration:none;border-bottom:1px solid #f6f4ee44}
+
+  /* ---------- masthead ---------- */
+  .masthead{
+    display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+    padding:18px 0;border-bottom:2px solid var(--ink);
+  }
+  .mh-brand{display:flex;align-items:center;gap:13px;min-width:0}
+  .mh-brand img{width:40px;height:40px;object-fit:contain}
+  .mh-brand div{line-height:1.2}
+  .mh-brand strong{display:block;font-size:16.5px;letter-spacing:-.01em;font-weight:700}
+  .mh-brand span{display:block;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);margin-top:2px}
+  .mh-meta{margin-left:auto;display:flex;align-items:center;gap:22px;flex-wrap:wrap;font-size:12px;color:var(--ink-2)}
+  .mh-meta .k{display:block;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin-bottom:1px}
+  .mh-meta .v{font-weight:600}
+  .status{display:inline-flex;align-items:center;gap:7px}
+  .status i{width:6px;height:6px;border-radius:50%;background:#15803d;display:inline-block;animation:blink 2.4s infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.28}}
+
+  /* ---------- nav ---------- */
+  .tabs{display:flex;gap:26px;flex-wrap:wrap;padding:0;border-bottom:1px solid var(--rule);overflow-x:auto;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs a{
+    position:relative;padding:13px 0;font-size:13px;font-weight:600;letter-spacing:.02em;
+    color:var(--ink-3);text-decoration:none;white-space:nowrap;
+  }
+  .tabs a:hover{color:var(--ink)}
+  .tabs a.on{color:var(--ink)}
+  .tabs a.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--amber)}
+
+  /* ---------- title block ---------- */
+  .title{display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap;padding:30px 0 22px}
+  .title h1{margin:0;font-size:clamp(26px,3.4vw,38px);font-weight:750;letter-spacing:-.035em;line-height:1.08}
+  .title h1 span{color:var(--amber)}
+  .title p{margin:9px 0 0;color:var(--ink-2);font-size:13.5px;max-width:56ch}
+  .seg{margin-left:auto;display:flex;border:1px solid var(--ink);border-radius:3px;overflow:hidden}
+  .seg button{
+    font:inherit;font-size:12px;font-weight:600;letter-spacing:.04em;cursor:pointer;
+    background:transparent;color:var(--ink);border:0;padding:8px 14px;border-left:1px solid var(--rule);
+  }
+  .seg button:first-child{border-left:0}
+  .seg button:hover{background:#efece3}
+  .seg button.on{background:var(--ink);color:var(--card)}
+
+  /* ---------- readout (transceiver LCD) ---------- */
+  .readout{
+    background:var(--lcd);
+    border-radius:6px;
+    padding:20px 22px;
+    color:var(--lcd-ink);
+    display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px 26px;
+    box-shadow:inset 0 0 0 1px #1e3327, 0 10px 26px #15171c1f;
+    font-family:"JetBrains Mono", ui-monospace, monospace;
+  }
+  .readout .cell{min-width:0}
+  .readout .lbl{
+    font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:#4f7f63;
+    margin-bottom:5px;font-family:"Inter",system-ui,sans-serif;font-weight:600;
+  }
+  .readout .big{font-size:clamp(19px,2.2vw,26px);font-weight:600;letter-spacing:-.02em;line-height:1.1;text-shadow:0 0 14px #7ef2a855}
+  .readout .sub{font-size:10.5px;color:#4f7f63;margin-top:5px;letter-spacing:.02em}
+
+  /* ---------- band plan ---------- */
+  .bandplan{margin:26px 0 0}
+  .bp-head{display:flex;align-items:baseline;gap:12px;margin-bottom:9px}
+  .bp-head h2{margin:0;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);font-weight:700}
+  .bp-head em{margin-left:auto;font-style:normal;font-size:11px;color:var(--ink-3)}
+  .bp{display:flex;height:34px;border:1px solid var(--ink);border-radius:3px;overflow:hidden}
+  .bp div{
+    display:flex;align-items:center;justify-content:center;
+    font-size:10px;font-weight:700;letter-spacing:.06em;color:#fffdf8;
+    border-left:1px solid #fffdf844;text-transform:uppercase;white-space:nowrap;overflow:hidden;
+  }
+  .bp div:first-child{border-left:0}
+  .bp-labels{display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:var(--ink-3)}
+  /* On narrow screens the labelled band bar cannot hold six labels, so it
+     becomes wrapped chips instead. */
+  .bp-chips{display:none;flex-wrap:wrap;gap:6px}
+  .bp-chips span{
+    display:inline-flex;align-items:center;gap:6px;background:var(--card);
+    border:1px solid var(--rule);border-radius:3px;padding:5px 9px;
+    font-size:11px;font-weight:600;color:var(--ink-2);
+  }
+  .bp-chips i{width:8px;height:8px;border-radius:2px;display:inline-block}
+
+  /* ---------- two column ---------- */
+  .cols{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:26px;margin-top:30px;align-items:start}
+  .cols > *{min-width:0}
+  .section-head{display:flex;align-items:baseline;gap:12px;padding-bottom:9px;border-bottom:1px solid var(--ink)}
+  .section-head h2{margin:0;font-size:15px;font-weight:700;letter-spacing:-.01em}
+  .section-head span{margin-left:auto;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  thead th{
+    text-align:left;padding:10px 8px 8px 0;font-size:9.5px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ink-3);font-weight:700;
+    border-bottom:1px solid var(--rule);white-space:nowrap;
+  }
+  thead th:first-child{padding-left:0}
+  tbody td{padding:12px 8px 12px 0;border-bottom:1px solid var(--rule-soft);vertical-align:middle;white-space:nowrap}
+  tbody tr:hover td{background:#f1eee5}
+  .tg-name{font-weight:650}
+  .tg-id{display:block;font-size:10.5px;color:var(--ink-3);letter-spacing:.03em;margin-top:1px}
+  .bar-cell{width:110px}
+  .bar{display:block;height:4px;background:var(--rule);overflow:hidden;min-width:64px}
+  .bar i{display:block;height:100%;background:var(--amber)}
+  .num-r{text-align:right}
+
+  /* ---------- side cards ---------- */
+  .card{background:var(--card);border:1px solid var(--rule);border-radius:4px;padding:18px 18px 14px;margin-bottom:22px}
+  .card h3{margin:0 0 3px;font-size:13.5px;font-weight:700;letter-spacing:-.01em}
+  .card .hint{font-size:11px;color:var(--ink-3);margin-bottom:13px}
+  .rows{list-style:none;margin:0;padding:0}
+  .rows li{display:flex;align-items:baseline;gap:10px;padding:8px 0;border-bottom:1px dotted var(--rule)}
+  .rows li:last-child{border-bottom:0}
+  .rows .rk{width:16px;font-size:10.5px;color:var(--ink-3);text-align:right;font-weight:700}
+  .rows .nm{font-family:"JetBrains Mono",monospace;font-size:12.5px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .rows .ct{font-size:11.5px;color:var(--ink-2)}
+  .rows .nm small{display:block;font-family:"Inter",sans-serif;font-size:10px;color:var(--ink-3);font-weight:500}
+
+  .note{font-size:12px;color:var(--ink-2);line-height:1.65}
+  .note b{color:var(--ink)}
+
+  /* waterfall mini */
+  .wf{display:flex;align-items:flex-end;gap:2px;height:56px;margin:6px 0 10px}
+  .wf i{flex:1;background:var(--amber);opacity:.32;min-height:3px}
+  .wf i.on{opacity:.95}
+
+  footer{margin-top:34px;padding-top:16px;border-top:1px solid var(--rule);display:flex;gap:16px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-3)}
+  footer a{color:var(--ink-2);text-decoration:none;border-bottom:1px solid var(--rule)}
+  footer a:hover{color:var(--amber)}
+
+  /* ---------- responsive ---------- */
+  @media (max-width:1000px){
+    .cols{grid-template-columns:1fr;gap:22px}
+    .readout{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+  }
+  @media (max-width:720px){
+    .wrap{padding:0 15px 84px}
+    .masthead{padding:14px 0;gap:12px}
+    .mh-meta{margin-left:0;width:100%;gap:16px;padding-top:10px;border-top:1px solid var(--rule-soft)}
+    .mh-meta > div:nth-child(3){display:none}
+    .title{padding:22px 0 18px}
+    .seg{margin-left:0;width:100%}
+    .seg button{flex:1;padding:9px 0;text-align:center}
+    .tabs{flex-wrap:nowrap}
+    .bp{display:none}
+    .bp-chips{display:flex}
+    .bp-labels{display:none}
+    .readout{padding:16px;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .bp{height:28px}
+    .bp div{font-size:8.5px}
+    /* Table becomes stacked cards so nothing scrolls sideways. */
+    thead{display:none}
+    tbody td{display:flex;justify-content:space-between;gap:14px;padding:7px 0;border-bottom:0;white-space:normal}
+    tbody tr{display:block;padding:12px 0;border-bottom:1px solid var(--rule)}
+    tbody td::before{content:attr(data-l);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);font-weight:700;flex:none}
+    tbody td:first-child{padding-top:0}
+    tbody td:first-child::before{display:none}
+    tbody td:first-child{display:block}
+    .bar-cell{width:auto;flex:1}
+    .badge{left:12px;right:12px;bottom:10px;justify-content:center;font-size:11px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <div class="mh-brand">
+      <img src="assets/brandmeister-logo-transparent.png" alt="BrandMeister logo">
+      <div>
+        <strong>BrandMeister Lastheard</strong>
+        <span>Statistics &amp; reports</span>
+      </div>
+    </div>
+    <div class="mh-meta">
+      <div><span class="k">Window</span><span class="v">Last 7 days</span></div>
+      <div><span class="k">Updated</span><span class="v mono">09:41:07 UTC</span></div>
+      <div><span class="k">Feed</span><span class="v status"><i></i>Connected</span></div>
+    </div>
+  </div>
+
+  <nav class="tabs">
+    <a href="#" class="on">Overview</a>
+    <a href="#">Live QSOs</a>
+    <a href="#">Reports</a>
+    <a href="#">Talkgroups</a>
+    <a href="#">Callsigns</a>
+    <a href="#">About</a>
+  </nav>
+
+  <section class="title">
+    <div>
+      <h1>Network traffic <span>/ seven days</span></h1>
+      <p>Completed talkgroup sessions decoded from the BrandMeister LastHeard stream.
+         Sessions shorter than three seconds are discarded as kerchunks.</p>
+    </div>
+    <div class="seg">
+      <button>24H</button><button class="on">7D</button><button>30D</button><button>90D</button>
+    </div>
+  </section>
+
+  <section class="readout" aria-label="Key figures">
+    <div class="cell">
+      <div class="lbl">Total QSOs</div>
+      <div class="big">245,816</div>
+      <div class="sub">+4.2% vs prior week</div>
+    </div>
+    <div class="cell">
+      <div class="lbl">Unique callsigns</div>
+      <div class="big">10,132</div>
+      <div class="sub">318 first heard</div>
+    </div>
+    <div class="cell">
+      <div class="lbl">Talkgroups</div>
+      <div class="big">1,061</div>
+      <div class="sub">−12 vs prior week</div>
+    </div>
+    <div class="cell">
+      <div class="lbl">Talk time</div>
+      <div class="big">412:37</div>
+      <div class="sub">hours : minutes</div>
+    </div>
+  </section>
+
+  <section class="bandplan">
+    <div class="bp-head">
+      <h2>Where the traffic is</h2>
+      <em>share of QSOs by band</em>
+    </div>
+    <div class="bp">
+      <div style="flex:38;background:#7c2d12">2 m 38%</div>
+      <div style="flex:29;background:#9a3412">70 cm 29%</div>
+      <div style="flex:11;background:#b45309">23 cm 11%</div>
+      <div style="flex:9;background:#c2711b">HF 9%</div>
+      <div style="flex:6;background:#d19a4a">4 m 6%</div>
+      <div style="flex:7;background:#dcc38f;color:#15171c">Other 7%</div>
+    </div>
+    <div class="bp-chips">
+      <span><i style="background:#7c2d12"></i>2 m · 38%</span>
+      <span><i style="background:#9a3412"></i>70 cm · 29%</span>
+      <span><i style="background:#b45309"></i>23 cm · 11%</span>
+      <span><i style="background:#c2711b"></i>HF · 9%</span>
+      <span><i style="background:#d19a4a"></i>4 m · 6%</span>
+      <span><i style="background:#dcc38f"></i>Other · 7%</span>
+    </div>
+    <div class="bp-labels"><span>VHF / UHF dominant</span><span>sample distribution</span></div>
+  </section>
+
+  <div class="cols">
+    <section>
+      <div class="section-head">
+        <h2>Busiest talkgroups</h2>
+        <span>Top 6 of 1,061</span>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Talkgroup</th><th class="num-r">QSOs</th><th>Share</th><th class="num-r">Stations</th><th class="num-r">Last heard</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="tg-name">Worldwide</span><span class="tg-id mono">TG 91 · Global</span></td>
+            <td class="num-r mono" data-l="QSOs">48,209</td>
+            <td class="bar-cell" data-l="Share"><span class="bar"><i style="width:100%"></i></span></td>
+            <td class="num-r mono" data-l="Stations">6,481</td>
+            <td class="num-r mono" data-l="Last heard">12 s</td>
+          </tr>
+          <tr>
+            <td><span class="tg-name">Spain</span><span class="tg-id mono">TG 214 · Europe</span></td>
+            <td class="num-r mono" data-l="QSOs">31,775</td>
+            <td class="bar-cell" data-l="Share"><span class="bar"><i style="width:66%"></i></span></td>
+            <td class="num-r mono" data-l="Stations">2,914</td>
+            <td class="num-r mono" data-l="Last heard">41 s</td>
+          </tr>
+          <tr>
+            <td><span class="tg-name">Alicante</span><span class="tg-id mono">TG 21403 · Europe</span></td>
+            <td class="num-r mono" data-l="QSOs">24,118</td>
+            <td class="bar-cell" data-l="Share"><span class="bar"><i style="width:50%"></i></span></td>
+            <td class="num-r mono" data-l="Stations">1,338</td>
+            <td class="num-r mono" data-l="Last heard">2 min</td>
+          </tr>
+          <tr>
+            <td><span class="tg-name">Deutschland</span><span class="tg-id mono">TG 262 · Europe</span></td>
+            <td class="num-r mono" data-l="QSOs">19,640</td>
+            <td class="bar-cell" data-l="Share"><span class="bar"><i style="width:41%"></i></span></td>
+            <td class="num-r mono" data-l="Stations">2,207</td>
+            <td class="num-r mono" data-l="Last heard">18 s</td>
+          </tr>
+          <tr>
+            <td><span class="tg-name">United Kingdom</span><span class="tg-id mono">TG 235 · Europe</span></td>
+            <td class="num-r mono" data-l="QSOs">14,882</td>
+            <td class="bar-cell" data-l="Share"><span class="bar"><i style="width:31%"></i></span></td>
+            <td class="num-r mono" data-l="Stations">1,764</td>
+            <td class="num-r mono" data-l="Last heard">3 min</td>
+          </tr>
+          <tr>
+            <td><span class="tg-name">USA</span><span class="tg-id mono">TG 3100 · North America</span></td>
+            <td class="num-r mono" data-l="QSOs">12,455</td>
+            <td class="bar-cell" data-l="Share"><span class="bar"><i style="width:26%"></i></span></td>
+            <td class="num-r mono" data-l="Stations">1,902</td>
+            <td class="num-r mono" data-l="Last heard">9 s</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="card" style="margin-top:24px">
+        <h3>Reading this table</h3>
+        <div class="hint">Notes for operators</div>
+        <p class="note" style="margin:0">
+          <b>QSOs</b> counts completed sessions, one per BrandMeister <span class="mono">SessionID</span>.
+          <b>Stations</b> counts distinct source callsigns, so a repeater carrying ten operators
+          contributes ten. A talkgroup can therefore show more stations than QSOs in a short window.
+        </p>
+      </div>
+    </section>
+
+    <aside>
+      <div class="card">
+        <h3>Most active stations</h3>
+        <div class="hint">by completed QSOs</div>
+        <ul class="rows">
+          <li><span class="rk">1</span><span class="nm">EA7KLK<small>Spain</small></span><span class="ct mono">1,284</span></li>
+          <li><span class="rk">2</span><span class="nm">DL1ABC<small>Germany</small></span><span class="ct mono">1,109</span></li>
+          <li><span class="rk">3</span><span class="nm">M0XYZ<small>United Kingdom</small></span><span class="ct mono">986</span></li>
+          <li><span class="rk">4</span><span class="nm">F4ABC<small>France</small></span><span class="ct mono">901</span></li>
+          <li><span class="rk">5</span><span class="nm">IZ2XYZ<small>Italy</small></span><span class="ct mono">874</span></li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>Last hour</h3>
+        <div class="hint">QSO volume per 5 minutes</div>
+        <div class="wf" aria-label="Recent volume">
+          <i style="height:34%"></i><i style="height:46%"></i><i style="height:39%"></i><i style="height:58%"></i>
+          <i style="height:62%"></i><i style="height:49%"></i><i style="height:71%"></i><i class="on" style="height:88%"></i>
+          <i style="height:74%"></i><i style="height:66%"></i><i style="height:52%"></i><i style="height:61%"></i>
+        </div>
+        <p class="note" style="margin:0">Peak at <span class="mono">09:15</span> with
+           <b>212 QSOs</b>; the quietest five minutes carried <b>41</b>.</p>
+      </div>
+
+      <div class="card">
+        <h3>Data quality</h3>
+        <div class="hint">collector health</div>
+        <ul class="rows">
+          <li><span class="nm" style="font-family:Inter,sans-serif;font-size:12.5px">Kerchunks filtered</span><span class="ct mono">3.9%</span></li>
+          <li><span class="nm" style="font-family:Inter,sans-serif;font-size:12.5px">Duplicate events</span><span class="ct mono">0.02%</span></li>
+          <li><span class="nm" style="font-family:Inter,sans-serif;font-size:12.5px">Avg. ingestion delay</span><span class="ct mono">0.8 s</span></li>
+        </ul>
+      </div>
+    </aside>
+  </div>
+
+  <footer>
+    <span>Mockup 2 of 4 · Receiver</span>
+    <span>Sample data — not production figures</span>
+    <span style="margin-left:auto"><a href="index.html">← All mockups</a></span>
+  </footer>
+</div>
+
+<div class="badge"><b>Mockup 2</b> Receiver · <a href="index.html">all mockups</a></div>
+</body>
+</html>
