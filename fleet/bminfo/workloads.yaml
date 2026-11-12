@@ -338,7 +338,7 @@
                 }
               }
             ],
-            "image": "ghcr.io/ea7klk/bminfo-new:v1.2.20@sha256:36313d809a1ca2a7f95abf14f58fc3830990539045d504518455088aba89170c",
+            "image": "ghcr.io/ea7klk/bminfo-new:v1.2.21@sha256:f18e74f36c6cb4dd17ed00eb47e7486b87e075c01738f358691b63bb6f1b5d4b",
             "imagePullPolicy": "IfNotPresent",
             "name": "web",
             "ports": [
@@ -646,7 +646,7 @@
                     }
                   }
                 ],
-                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.20@sha256:36313d809a1ca2a7f95abf14f58fc3830990539045d504518455088aba89170c",
+                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.21@sha256:f18e74f36c6cb4dd17ed00eb47e7486b87e075c01738f358691b63bb6f1b5d4b",
                 "imagePullPolicy": "IfNotPresent",
                 "name": "purge-unverified-users",
                 "resources": {
@@ -728,7 +728,7 @@
                 }
               }
             ],
-            "image": "ghcr.io/ea7klk/bminfo-new:v1.2.20@sha256:36313d809a1ca2a7f95abf14f58fc3830990539045d504518455088aba89170c",
+            "image": "ghcr.io/ea7klk/bminfo-new:v1.2.21@sha256:f18e74f36c6cb4dd17ed00eb47e7486b87e075c01738f358691b63bb6f1b5d4b",
             "imagePullPolicy": "IfNotPresent",
             "name": "collector",
             "resources": {
@@ -821,7 +821,7 @@
                     }
                   }
                 ],
-                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.20@sha256:36313d809a1ca2a7f95abf14f58fc3830990539045d504518455088aba89170c",
+                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.21@sha256:f18e74f36c6cb4dd17ed00eb47e7486b87e075c01738f358691b63bb6f1b5d4b",
                 "imagePullPolicy": "IfNotPresent",
                 "name": "archive-raw-events",
                 "resources": {
@@ -899,7 +899,7 @@
                     }
                   }
                 ],
-                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.20@sha256:36313d809a1ca2a7f95abf14f58fc3830990539045d504518455088aba89170c",
+                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.21@sha256:f18e74f36c6cb4dd17ed00eb47e7486b87e075c01738f358691b63bb6f1b5d4b",
                 "imagePullPolicy": "IfNotPresent",
                 "name": "cleanup-raw-events",
                 "resources": {
@@ -978,7 +978,7 @@
                     }
                   }
                 ],
-                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.20@sha256:36313d809a1ca2a7f95abf14f58fc3830990539045d504518455088aba89170c",
+                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.21@sha256:f18e74f36c6cb4dd17ed00eb47e7486b87e075c01738f358691b63bb6f1b5d4b",
                 "imagePullPolicy": "IfNotPresent",
                 "name": "sync-talkgroups",
                 "resources": {
