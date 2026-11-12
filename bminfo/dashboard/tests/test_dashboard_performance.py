@@ -4,7 +4,7 @@ import json
 from datetime import timedelta
 
 from django.db import connection
-from django.test import SimpleTestCase, TransactionTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from dashboard.core_views import dashboard_payload
@@ -93,6 +93,19 @@ class WorkMemScopeTests(TransactionTestCase):
         request.user = self.user
         self.assertEqual(dashboard_payload(request).status_code, 200)
         self.assertEqual(self._session_work_mem(), before)
+
+
+class AutovacuumTuningTests(TestCase):
+    """The index is only used while the visibility map is fresh."""
+
+    def test_qsos_lowers_its_autovacuum_scale_factor(self):
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT reloptions FROM pg_class WHERE relname = 'qsos'")
+            options = cursor.fetchone()[0] or []
+
+        joined = " ".join(options)
+        self.assertIn("autovacuum_vacuum_scale_factor=0.02", joined)
+        self.assertIn("autovacuum_analyze_scale_factor=0.05", joined)
 
 
 class CoveringIndexTests(SimpleTestCase):

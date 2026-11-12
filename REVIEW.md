@@ -1037,12 +1037,14 @@ Each entry states what was measured, not what is hoped for.
    database time (1.63×)**, and **4.3 → 2.0 s end to end (2.1×)** — five round
    trips down to one, plus no longer shipping 245k timestamps to Python for the
    histogram.
-4. ~~**Covering index on `start_at`**~~ — **done in v1.2.14**, with a correction
-   to the column list. As proposed (`INCLUDE (source_call, destination_id,
+4. ~~**Covering index on `start_at`**~~ — **done in v1.2.14**, with two
+   corrections. As proposed (`INCLUDE (source_call, destination_id,
    duration_ms)`) the planner **ignored the index entirely** and kept using
-   `qsos_start_idx`, because the dashboard also selects `source_name`. Adding
-   that fourth column makes it a real Index Only Scan: **9.1%** on the
-   application path (1,764 → 1,603 ms).
+   `qsos_start_idx`, because the dashboard also selects `source_name`; adding
+   that column makes it a real Index Only Scan (**9.1%** on the copy). On
+   production it then delivered nothing until `VACUUM` refreshed the visibility
+   map — see "The index only works while the visibility map is fresh", and
+   migration `0008`, which keeps it fresh.
 5. ~~**`work_mem` 8 MB → 64 MB for these queries**~~ — **done in v1.2.14**, per
    transaction. Measured on the whole dashboard query rather than the summary
    aggregate alone: **12.7%** (1,764 → 1,540 ms). Together with the covering
@@ -1196,6 +1198,44 @@ itself — sorting and counting 245k rows — not the scan. Once the scan droppe
 from 165 ms to 31 ms there was little left to remove, which is what the original
 "modest, about 9%" note anticipated. Going further needs pre-aggregation, not
 another index.
+
+#### The index only works while the visibility map is fresh
+
+Deploying the index was not enough on production. Immediately after the
+migration the planner reported an Index Only Scan, but with **249,648 heap
+fetches** and a **488 ms** scan — worse than the plain index it replaced, because
+each row was still being fetched from the heap.
+
+An Index Only Scan only skips the heap for pages marked all-visible, and the
+visibility map is set by `VACUUM`. `qsos` had 300,118 dead tuples and had not been
+autovacuumed since 2026-11-02. With the default
+`autovacuum_vacuum_scale_factor = 0.2`, a table this size needs about **727,000**
+dead tuples before autovacuum fires, which at current write rates is roughly
+every three weeks.
+
+One `VACUUM (ANALYZE, PARALLEL 0) qsos` — non-blocking, the same operation the
+admin tools already run — changed that immediately:
+
+| | Heap fetches | Scan | `/api/dashboard/?timeRange=1w` |
+| --- | --- | --- | --- |
+| index deployed, stale VM | 249,648 | 488 ms | 1.69–1.94 s |
+| after `VACUUM` | **96** | **24 ms** | **1.22–1.31 s** |
+
+So the covering index is worth far more than the copy suggested (the copy was
+freshly vacuumed), but only while the visibility map is current. Migration `0008`
+now sets `autovacuum_vacuum_scale_factor = 0.02` and
+`autovacuum_analyze_scale_factor = 0.05` on `qsos`, bringing autovacuum round
+every few days instead of every few weeks. Without it the index silently decays
+back to heap reads, which is the kind of regression nobody notices because the
+plan still says "Index Only Scan".
+
+**Full sequence on production**, `/api/dashboard/?timeRange=1w`, over HTTPS:
+
+| Stage | Time |
+| --- | --- |
+| before this work (single-pass only, v1.2.13) | 1.95–2.07 s |
+| covering index + 64 MB `work_mem`, stale VM | 1.69–1.94 s |
+| after `VACUUM` and autovacuum tuning | **1.22–1.31 s** |
 
 ### raw_events retention (assessment, no change made)
 
@@ -1373,7 +1413,7 @@ reversible, and keeps the ORM's transactional guarantees where they matter.
 
 | Tier | Trigger | Changes |
 | --- | --- | --- |
-| **Now** (12 accounts, 25 target) | — | ~~`stop_at` index (H5)~~ — v1.2.6; ~~single-pass dashboard query~~ — v1.2.13; ~~covering index and per-transaction `work_mem`~~ — v1.2.14. Remaining: 20–30 s response cache. Keep 3 workers. |
+| **Now** (12 accounts, 25 target) | — | ~~`stop_at` index (H5)~~ — v1.2.6; ~~single-pass dashboard query~~ — v1.2.13; ~~covering index, per-transaction `work_mem` and `qsos` autovacuum tuning~~ — v1.2.14. Remaining: 20–30 s response cache. Keep 3 workers. Monitor that `qsos` is being autovacuumed at its new 2% threshold. |
 | **~100–500 concurrent readers** | sustained >5 req/s on the dashboard, or probe flaps | Add PgBouncer, then 4–6 workers; partition `raw_events`; move the admin maintenance work to Jobs (M1); put a read replica behind the analytics endpoints. |
 | **~1,000+ concurrent, or 10× ingest** | write latency or query times growing without a code change | Timescale continuous aggregates (or ClickHouse fed by the collector) for analytics; Redis channel layer for live updates; move `raw_events` to object storage. Keep PostgreSQL for identity, tokens and ingestion. |
 | **Any tier** | — | Do not raise `APP_WORKERS` past ~6 without PgBouncer. Measured: no throughput gain, worse latency, and a hard connection ceiling. |

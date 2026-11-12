@@ -184,6 +184,12 @@ Two things make that statement fast, and both depend on its column list:
 Together they take the week-range payload from roughly 1.76 s to 1.42 s of
 database time on production-density data. See `REVIEW.md` for the measurements.
 
+`qsos_cover_idx` is only used as an Index Only Scan while the visibility map is
+current, which `VACUUM` maintains. Migration `0008` lowers the table's
+`autovacuum_vacuum_scale_factor` to 0.02 so autovacuum runs every few days rather
+than every few weeks; if the dashboard slows down again, check
+`last_autovacuum` in `pg_stat_user_tables` before suspecting the index.
+
 ## Data behavior
 
 One completed BrandMeister `SessionID` represents one QSO. Duration is computed
