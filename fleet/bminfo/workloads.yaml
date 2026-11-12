@@ -338,7 +338,7 @@
                 }
               }
             ],
-            "image": "ghcr.io/ea7klk/bminfo-new:v1.2.19@sha256:1dc009231dbb3ce61a4785a0ebe5f72d4ca21a8f8959d20490709f656cb680c1",
+            "image": "ghcr.io/ea7klk/bminfo-new:v1.2.20@sha256:36313d809a1ca2a7f95abf14f58fc3830990539045d504518455088aba89170c",
             "imagePullPolicy": "IfNotPresent",
             "name": "web",
             "ports": [
@@ -646,7 +646,7 @@
                     }
                   }
                 ],
-                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.19@sha256:1dc009231dbb3ce61a4785a0ebe5f72d4ca21a8f8959d20490709f656cb680c1",
+                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.20@sha256:36313d809a1ca2a7f95abf14f58fc3830990539045d504518455088aba89170c",
                 "imagePullPolicy": "IfNotPresent",
                 "name": "purge-unverified-users",
                 "resources": {
@@ -728,7 +728,7 @@
                 }
               }
             ],
-            "image": "ghcr.io/ea7klk/bminfo-new:v1.2.19@sha256:1dc009231dbb3ce61a4785a0ebe5f72d4ca21a8f8959d20490709f656cb680c1",
+            "image": "ghcr.io/ea7klk/bminfo-new:v1.2.20@sha256:36313d809a1ca2a7f95abf14f58fc3830990539045d504518455088aba89170c",
             "imagePullPolicy": "IfNotPresent",
             "name": "collector",
             "resources": {
@@ -821,7 +821,7 @@
                     }
                   }
                 ],
-                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.19@sha256:1dc009231dbb3ce61a4785a0ebe5f72d4ca21a8f8959d20490709f656cb680c1",
+                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.20@sha256:36313d809a1ca2a7f95abf14f58fc3830990539045d504518455088aba89170c",
                 "imagePullPolicy": "IfNotPresent",
                 "name": "archive-raw-events",
                 "resources": {
@@ -899,7 +899,7 @@
                     }
                   }
                 ],
-                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.19@sha256:1dc009231dbb3ce61a4785a0ebe5f72d4ca21a8f8959d20490709f656cb680c1",
+                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.20@sha256:36313d809a1ca2a7f95abf14f58fc3830990539045d504518455088aba89170c",
                 "imagePullPolicy": "IfNotPresent",
                 "name": "cleanup-raw-events",
                 "resources": {
@@ -978,7 +978,7 @@
                     }
                   }
                 ],
-                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.19@sha256:1dc009231dbb3ce61a4785a0ebe5f72d4ca21a8f8959d20490709f656cb680c1",
+                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.20@sha256:36313d809a1ca2a7f95abf14f58fc3830990539045d504518455088aba89170c",
                 "imagePullPolicy": "IfNotPresent",
                 "name": "sync-talkgroups",
                 "resources": {
