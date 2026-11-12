@@ -155,6 +155,20 @@ are:
 Use `COOKIE_SECURE=true` and configure `APP_CSRF_TRUSTED_ORIGINS` when the
 application is served over HTTPS. Keep `.env` out of version control.
 
+## Dashboard query
+
+`/api/dashboard/` answers five questions over one filtered time range: the
+summary, the earliest and latest timestamps, two top-N lists and the histogram.
+They come from a single statement (`dashboard/dashboard_stats.py`) built as a
+`WITH` clause, so the range is read once instead of four times.
+
+The filter is not reproduced by hand. `filtered_qsos()` is compiled to SQL and
+used as the CTE body, which keeps Django's `icontains` escaping, the
+continent/country join and the talkgroup `IN` list exactly as the ORM produces
+them. `dashboard/tests/test_dashboard_single_pass.py` holds the previous
+multi-query implementation as an oracle and compares every response field across
+a matrix of filters; extend that test when the payload changes.
+
 ## Data behavior
 
 One completed BrandMeister `SessionID` represents one QSO. Duration is computed

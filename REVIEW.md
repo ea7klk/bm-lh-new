@@ -44,8 +44,11 @@ document** — every finding below is recorded, not applied.
   settings actually resolved inside the running pod, container identity,
   resource limits, network policies, database connection usage, table sizes,
   and the age distribution of retained data.
-- Implemented, shipped and verified the one fix in this document that pays for
-  itself immediately: migration `0006` adds `qsos_stop_idx` (H5). Build cost,
+- Implemented and shipped the two performance changes: migration `0006` adds
+  `qsos_stop_idx` (H5), and the dashboard payload now derives all of its answers
+  from one materialised query (see "Single-pass dashboard query").
+- Implemented, shipped and verified the first of those: migration `0006` adds
+  `qsos_stop_idx` (H5). Build cost,
   lock behaviour, index size and post-migration query plans were measured on the
   production-density copy before deploying, then confirmed against production
   after it (858.6 ms → 0.308 ms, index built in ~2.5 s, 73 MB).
@@ -1024,11 +1027,11 @@ Each entry states what was measured, not what is hoped for.
    has no `CACHES` configured at all today, so this needs one decision (LocMem
    per worker, or Redis shared across workers — the latter is required the
    moment there is more than one replica).
-3. **Single-pass query rewrite — 2.1× on production (3,458 → 1,618 ms), 1.6× on
-   the copy (1,590 → 1,045 ms).** One materialised range CTE feeding summary,
-   histogram and both top-N lists, replacing four independent scans. Medium
-   effort, no schema change, same results — verified by comparing the four
-   answers against the four separate queries on the copy.
+3. ~~**Single-pass query rewrite**~~ — **done in v1.2.13** (see "Single-pass
+dashboard query" below). Measured on
+   production after the fact: **3,354 → 2,058 ms, 1.63×**, five round trips down
+   to one. The 2.1× originally projected here was optimistic; H6 records where
+   the difference went.
 4. **Covering index `(start_at DESC) INCLUDE (source_call, destination_id,
    duration_ms)` — about 9% end-to-end** (1.4 → 1.5 req/s; summary 619 → 541 ms).
    Modest, because the distinct-count sort dominates once heap access is
@@ -1064,6 +1067,64 @@ Each entry states what was measured, not what is hoped for.
     a few hundred users. Beyond that, the correct shape is one shared poller
     publishing to a channel layer (Redis) that fans out to all consumers —
     turning N queries per second into 1.
+
+### Single-pass dashboard query (implemented in v1.2.13)
+
+The dashboard payload needed five answers over the same filtered range: a
+summary, the earliest and latest timestamps, two top-N lists and a histogram.
+Each was issued as its own statement, so the week range was scanned four times
+and the histogram pulled every `start_at` into Python on top of that.
+
+`dashboard/dashboard_stats.py` now compiles the filter into one `WITH` clause and
+derives every answer from that single materialised set. The filter is **not**
+re-implemented: `filtered_qsos()` is compiled to SQL and used as the CTE body,
+so the fast path inherits Django's exact semantics — the `UPPER(..) LIKE UPPER(%s)`
+form of `icontains` with its wildcards escaped into the parameter, the
+LEFT/INNER join the continent and country filters require, and the `IN` list for
+talkgroups. Re-writing that `WHERE` by hand is where a rewrite like this usually
+introduces a subtle difference; instead the statement is borrowed wholesale.
+
+**Measured on production** (week range, 249,405 QSO rows), psql-reported time:
+
+| | Statements | Total |
+| --- | --- | --- |
+| before | 5 round trips | 906 + 1.2 + 958 + 949 + 540 = **3,354 ms** |
+| after | 1 round trip | **2,058 ms** (1,982 / 2,043 / 2,150 over three runs) |
+
+**1.63× less database time, and five round trips down to one.**
+
+**The 2.1× projected earlier was optimistic.** That estimate came from a
+prototype that selected only the aggregate columns and omitted the earliest
+timestamp, the 24-hour count and the talkgroup join. Two changes recovered most
+of the gap:
+
+- The CTE initially carried the four wide talkgroup text columns so the top-N
+  list would not need a join. At 250k rows that nearly doubled the materialised
+  set, and the first measurement was only **1.39×** (3,354 → 2,616 ms). The CTE
+  now carries five narrow columns and the top-N list joins `talkgroups`
+  afterwards; `talkgroup_id` is unique, so grouping on the key alone produces the
+  same groups.
+- Grouping on the key instead of key-plus-metadata also stopped an 18 MB
+  external merge, because the sort no longer carried text.
+
+**Remaining headroom, measured and not taken.** Two sorts still spill about
+10 MB each, because `work_mem` is 8 MB. Running the same query with
+`SET LOCAL work_mem = '64MB'` measures **1,894 ms** (1.77×). That was left out of
+this change: it needs a second round trip to set the value, and a per-request
+memory override is a decision worth making deliberately. It is item 5 in the
+ranked list above.
+
+**Equivalence.** `dashboard/tests/test_dashboard_single_pass.py` keeps the
+previous implementation verbatim as an oracle and compares every field of the
+response across 25 filter combinations — bare, each calendar range, row limits
+including a non-numeric one, continent, country, one and two talkgroups,
+callsign substrings, and the literal `%`, `_` and `100%` wildcards — plus an
+empty range, the row cap, and the sort order of the by-time lists. Three
+deliberate mutations were checked to fail it: grouping callsigns without
+`source_name`, dropping the NULL/unknown callsign exclusion, and ordering
+talkgroups by id instead of count. That harness caught a real contract break
+during the work: the first version emitted `qso_count` where the scripts read
+`r.count`.
 
 ### Would moving to a non-relational database help?
 
@@ -1147,7 +1208,7 @@ reversible, and keeps the ORM's transactional guarantees where they matter.
 
 | Tier | Trigger | Changes |
 | --- | --- | --- |
-| **Now** (12 accounts, 25 target) | — | ~~`stop_at` index (H5)~~ — **done and verified in v1.2.6**. Remaining: 20–30 s response cache, single-pass query, covering index, `work_mem` 64 MB for the aggregate queries. Keep 3 workers. |
+| **Now** (12 accounts, 25 target) | — | ~~`stop_at` index (H5)~~ — done in v1.2.6; ~~single-pass dashboard query~~ — done in v1.2.13. Remaining: 20–30 s response cache, covering index, `work_mem` 64 MB for the aggregate queries. Keep 3 workers. |
 | **~100–500 concurrent readers** | sustained >5 req/s on the dashboard, or probe flaps | Add PgBouncer, then 4–6 workers; partition `raw_events`; move the admin maintenance work to Jobs (M1); put a read replica behind the analytics endpoints. |
 | **~1,000+ concurrent, or 10× ingest** | write latency or query times growing without a code change | Timescale continuous aggregates (or ClickHouse fed by the collector) for analytics; Redis channel layer for live updates; move `raw_events` to object storage. Keep PostgreSQL for identity, tokens and ingestion. |
 | **Any tier** | — | Do not raise `APP_WORKERS` past ~6 without PgBouncer. Measured: no throughput gain, worse latency, and a hard connection ceiling. |
@@ -1274,12 +1335,14 @@ Traced and found sound, so the scope of the "clean" claim is honest.
    container with limits and a NetworkPolicy.
 8. **M8 + L2 + L9 — the account-flow edges.** A resend endpoint removes the
    three-day dead zone and makes the enumeration trade-off a conscious one.
-9. **Scalability follow-ups** — partition `raw_events` by month so retention is
-   a metadata operation, add PgBouncer before touching `APP_WORKERS`, and move
-   `raw_events` payloads to object storage to shrink the database by ~80%. If
-   volume grows 10×, add Timescale continuous aggregates or ClickHouse as a
-   derived analytics store; do not migrate the primary database (see
-   "Scalability").
+9. ~~**Single-pass dashboard query**~~ — **done** (see "Single-pass dashboard
+   query": 1.63× measured on production, and a correction to the earlier
+   estimate). Remaining scalability follow-ups: partition `raw_events` by month
+   so retention is a metadata operation, add PgBouncer before touching
+   `APP_WORKERS`, and move `raw_events` payloads to object storage to shrink the
+   database by ~80%. If volume grows 10×, add Timescale continuous aggregates or
+   ClickHouse as a derived analytics store; do not migrate the primary database
+   (see "Scalability").
 10. **L1, L3, L4, L6, L7 — close out** as their own small changes.
 
 ## Limits
