@@ -322,7 +322,8 @@
         "containers": [
           {
             "command": [
-              "./entrypoint.sh"
+              "./entrypoint.sh",
+              "web"
             ],
             "envFrom": [
               {
@@ -677,6 +678,326 @@
     },
     "schedule": "17 3 * * *",
     "successfulJobsHistoryLimit": 1,
+    "timeZone": "Etc/UTC"
+  }
+}
+
+---
+{
+  "apiVersion": "apps/v1",
+  "kind": "Deployment",
+  "metadata": {
+    "labels": {
+      "kustomize.toolkit.fluxcd.io/name": "bminfo-web",
+      "kustomize.toolkit.fluxcd.io/namespace": "flux-system",
+      "app.kubernetes.io/name": "collector"
+    },
+    "name": "collector",
+    "namespace": "bminfo"
+  },
+  "spec": {
+    "progressDeadlineSeconds": 600,
+    "replicas": 1,
+    "revisionHistoryLimit": 5,
+    "selector": {
+      "matchLabels": {
+        "app.kubernetes.io/name": "collector"
+      }
+    },
+    "strategy": {
+      "type": "Recreate"
+    },
+    "template": {
+      "metadata": {
+        "labels": {
+          "app.kubernetes.io/name": "collector"
+        }
+      },
+      "spec": {
+        "automountServiceAccountToken": false,
+        "containers": [
+          {
+            "command": [
+              "./entrypoint.sh",
+              "collector"
+            ],
+            "envFrom": [
+              {
+                "secretRef": {
+                  "name": "web-env"
+                }
+              }
+            ],
+            "image": "ghcr.io/ea7klk/bminfo-new:v1.2.18@sha256:eddf72775080a9c1aa8f71a3546ee898b96bc4a0d5bc5a0ad439628ee024ab0c",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "collector",
+            "resources": {
+              "requests": {
+                "cpu": "50m",
+                "memory": "128Mi"
+              }
+            },
+            "securityContext": {},
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File",
+            "workingDir": "/app"
+          }
+        ],
+        "dnsPolicy": "ClusterFirst",
+        "imagePullSecrets": [
+          {
+            "name": "registry-credentials"
+          }
+        ],
+        "nodeSelector": {
+          "kubernetes.io/hostname": "spainip-k3s"
+        },
+        "restartPolicy": "Always",
+        "schedulerName": "default-scheduler",
+        "securityContext": {},
+        "terminationGracePeriodSeconds": 60
+      }
+    }
+  }
+}
+
+---
+{
+  "apiVersion": "batch/v1",
+  "kind": "CronJob",
+  "metadata": {
+    "labels": {
+      "kustomize.toolkit.fluxcd.io/name": "bminfo-web",
+      "kustomize.toolkit.fluxcd.io/namespace": "flux-system"
+    },
+    "name": "archive-raw-events",
+    "namespace": "bminfo"
+  },
+  "spec": {
+    "concurrencyPolicy": "Forbid",
+    "failedJobsHistoryLimit": 3,
+    "startingDeadlineSeconds": 1800,
+    "jobTemplate": {
+      "spec": {
+        "activeDeadlineSeconds": 3600,
+        "backoffLimit": 2,
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "archive-raw-events"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "dnsPolicy": "ClusterFirst",
+            "imagePullSecrets": [
+              {
+                "name": "registry-credentials"
+              }
+            ],
+            "nodeSelector": {
+              "kubernetes.io/hostname": "spainip-k3s"
+            },
+            "restartPolicy": "OnFailure",
+            "schedulerName": "default-scheduler",
+            "securityContext": {},
+            "containers": [
+              {
+                "command": [
+                  "python",
+                  "manage.py",
+                  "archive_raw_events"
+                ],
+                "envFrom": [
+                  {
+                    "secretRef": {
+                      "name": "web-env"
+                    }
+                  },
+                  {
+                    "secretRef": {
+                      "name": "bminfo-object-store",
+                      "optional": true
+                    }
+                  }
+                ],
+                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.18@sha256:eddf72775080a9c1aa8f71a3546ee898b96bc4a0d5bc5a0ad439628ee024ab0c",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "archive-raw-events",
+                "resources": {
+                  "requests": {
+                    "cpu": "25m",
+                    "memory": "128Mi"
+                  }
+                },
+                "securityContext": {},
+                "workingDir": "/app"
+              }
+            ],
+            "terminationGracePeriodSeconds": 60
+          }
+        }
+      }
+    },
+    "schedule": "17 1 * * *",
+    "successfulJobsHistoryLimit": 3,
+    "timeZone": "Etc/UTC"
+  }
+}
+
+---
+{
+  "apiVersion": "batch/v1",
+  "kind": "CronJob",
+  "metadata": {
+    "labels": {
+      "kustomize.toolkit.fluxcd.io/name": "bminfo-web",
+      "kustomize.toolkit.fluxcd.io/namespace": "flux-system"
+    },
+    "name": "cleanup-raw-events",
+    "namespace": "bminfo"
+  },
+  "spec": {
+    "concurrencyPolicy": "Forbid",
+    "failedJobsHistoryLimit": 3,
+    "startingDeadlineSeconds": 1800,
+    "jobTemplate": {
+      "spec": {
+        "activeDeadlineSeconds": 1800,
+        "backoffLimit": 2,
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "cleanup-raw-events"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "dnsPolicy": "ClusterFirst",
+            "imagePullSecrets": [
+              {
+                "name": "registry-credentials"
+              }
+            ],
+            "nodeSelector": {
+              "kubernetes.io/hostname": "spainip-k3s"
+            },
+            "restartPolicy": "OnFailure",
+            "schedulerName": "default-scheduler",
+            "securityContext": {},
+            "containers": [
+              {
+                "command": [
+                  "python",
+                  "manage.py",
+                  "cleanup_raw_events"
+                ],
+                "envFrom": [
+                  {
+                    "secretRef": {
+                      "name": "web-env"
+                    }
+                  }
+                ],
+                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.18@sha256:eddf72775080a9c1aa8f71a3546ee898b96bc4a0d5bc5a0ad439628ee024ab0c",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "cleanup-raw-events",
+                "resources": {
+                  "requests": {
+                    "cpu": "25m",
+                    "memory": "128Mi"
+                  }
+                },
+                "securityContext": {},
+                "workingDir": "/app"
+              }
+            ],
+            "terminationGracePeriodSeconds": 60
+          }
+        }
+      }
+    },
+    "schedule": "17 2 * * *",
+    "successfulJobsHistoryLimit": 3,
+    "timeZone": "Etc/UTC"
+  }
+}
+
+---
+{
+  "apiVersion": "batch/v1",
+  "kind": "CronJob",
+  "metadata": {
+    "labels": {
+      "kustomize.toolkit.fluxcd.io/name": "bminfo-web",
+      "kustomize.toolkit.fluxcd.io/namespace": "flux-system"
+    },
+    "name": "sync-talkgroups",
+    "namespace": "bminfo"
+  },
+  "spec": {
+    "concurrencyPolicy": "Forbid",
+    "failedJobsHistoryLimit": 3,
+    "startingDeadlineSeconds": 1800,
+    "jobTemplate": {
+      "spec": {
+        "activeDeadlineSeconds": 900,
+        "backoffLimit": 2,
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "sync-talkgroups"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "dnsPolicy": "ClusterFirst",
+            "imagePullSecrets": [
+              {
+                "name": "registry-credentials"
+              }
+            ],
+            "nodeSelector": {
+              "kubernetes.io/hostname": "spainip-k3s"
+            },
+            "restartPolicy": "OnFailure",
+            "schedulerName": "default-scheduler",
+            "securityContext": {},
+            "containers": [
+              {
+                "command": [
+                  "python",
+                  "manage.py",
+                  "sync_talkgroups",
+                  "--force"
+                ],
+                "envFrom": [
+                  {
+                    "secretRef": {
+                      "name": "web-env"
+                    }
+                  }
+                ],
+                "image": "ghcr.io/ea7klk/bminfo-new:v1.2.18@sha256:eddf72775080a9c1aa8f71a3546ee898b96bc4a0d5bc5a0ad439628ee024ab0c",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "sync-talkgroups",
+                "resources": {
+                  "requests": {
+                    "cpu": "25m",
+                    "memory": "128Mi"
+                  }
+                },
+                "securityContext": {},
+                "workingDir": "/app"
+              }
+            ],
+            "terminationGracePeriodSeconds": 60
+          }
+        }
+      }
+    },
+    "schedule": "47 2 * * *",
+    "successfulJobsHistoryLimit": 3,
     "timeZone": "Etc/UTC"
   }
 }

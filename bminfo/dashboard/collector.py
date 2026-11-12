@@ -2,7 +2,7 @@ import hashlib
 import json
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import requests
 from django.db import close_old_connections, connections, transaction
@@ -337,30 +337,23 @@ def heartbeat_loop(stop_event, connected_event):
         stop_event.wait(interval)
 
 
-def talkgroup_loop(stop_event):
+def bootstrap_talkgroups():
+    """Refresh talkgroup metadata once, at collector start.
+
+    The catalogue used to be re-synced by a loop inside this process; that is now
+    a scheduled CronJob (`manage.py sync_talkgroups`). The startup pass stays
+    because a fresh install has no catalogue and a restart should repair it:
+    `sync_talkgroups(force=False)` is a no-op when the data is fresh.
+    """
     url = os.getenv("TALKGROUPS_URL", "https://api.brandmeister.network/v2/talkgroup")
     try:
         close_old_connections()
         if not Talkgroup.objects.exists():
             logger.info("no talkgroup metadata found; performing initial synchronization")
-            sync_talkgroups(url, force=True)
+            logger.info("synchronized %d talkgroups", sync_talkgroups(url, force=True))
         else:
             repair_talkgroups()
     except Exception:
-        logger.exception("initial talkgroup metadata repair failed")
+        logger.exception("talkgroup metadata bootstrap failed")
     finally:
         connections.close_all()
-    while not stop_event.is_set():
-        now = django_timezone.now()
-        next_run = now.replace(hour=2, minute=0, second=0, microsecond=0)
-        if next_run <= now:
-            next_run += timedelta(days=1)
-        if stop_event.wait(max((next_run - now).total_seconds(), 1)):
-            break
-        try:
-            close_old_connections()
-            logger.info("synchronized %d talkgroups", sync_talkgroups(url, force=True))
-        except Exception:
-            logger.exception("talkgroup synchronization failed")
-        finally:
-            connections.close_all()

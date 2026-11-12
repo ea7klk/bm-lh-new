@@ -49,6 +49,7 @@ services:
 
   web:
     image: ghcr.io/${GHCR_IMAGE_OWNER:-ea7klk}/bminfo-new:latest
+    command: ["./entrypoint.sh", "web"]
     environment:
       APP_SECRET_KEY: ${APP_SECRET_KEY}
       APP_DEBUG: ${APP_DEBUG:-false}
@@ -64,7 +65,6 @@ services:
       APP_TIMEOUT_SECONDS: ${APP_TIMEOUT_SECONDS:-120}
       APP_GRACEFUL_TIMEOUT_SECONDS: ${APP_GRACEFUL_TIMEOUT_SECONDS:-30}
       APP_KEEPALIVE_SECONDS: ${APP_KEEPALIVE_SECONDS:-5}
-      APP_COLLECTOR_ENABLED: ${APP_COLLECTOR_ENABLED:-true}
       ADMIN_CALLSIGN: ${ADMIN_CALLSIGN:-ADMIN}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
@@ -125,6 +125,33 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+    restart: unless-stopped
+
+  collector:
+    build:
+      context: .
+      dockerfile: bminfo/Dockerfile
+    command: ["./entrypoint.sh", "collector"]
+    environment:
+      APP_SECRET_KEY: ${APP_SECRET_KEY}
+      APP_ALLOWED_HOSTS: ${APP_ALLOWED_HOSTS:-*}
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_CONN_MAX_AGE: ${DB_CONN_MAX_AGE:-60}
+      BM_URL: ${BM_URL}
+      BM_SOCKETIO_PATH: ${BM_SOCKETIO_PATH:-/lh/socket.io}
+      BM_JOIN: ${BM_JOIN:-everything}
+      TALKGROUPS_URL: ${TALKGROUPS_URL}
+      EXCLUDE_LOCAL_TALKGROUP: ${EXCLUDE_LOCAL_TALKGROUP:-9}
+      KERCHUNK_THRESHOLD_SECONDS: ${KERCHUNK_THRESHOLD_SECONDS:-3}
+      RAW_EVENT_KERCHUNK_THRESHOLD_SECONDS: ${RAW_EVENT_KERCHUNK_THRESHOLD_SECONDS:-3}
+      COLLECTOR_HEARTBEAT_SECONDS: ${COLLECTOR_HEARTBEAT_SECONDS:-30}
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

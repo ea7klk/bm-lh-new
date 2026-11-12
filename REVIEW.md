@@ -867,6 +867,15 @@ ImproperlyConfigured` away.
 
 **Smaller structural notes.**
 
+- **The single-container coupling is gone (v1.2.19).** The web and collector used
+  to share one container, with the collector as a child process of the entrypoint,
+  and recurring maintenance (archiving, nightly cleanup, the talkgroup refresh) ran
+  as threads inside the collector. That meant a web deploy dropped the live feed,
+  and a collector crash silently stopped archiving. There are now separate
+  Deployments for `web` and `collector`, four CronJobs for the scheduled work, an
+  advisory-locked `db_migrate` because the pods start independently, and a
+  `test_runtime_topology.py` that reads the manifest so the split cannot quietly
+  regress.
 - `views.py` exists only as a compatibility shim re-exporting names from four
   modules. It invites imports from a module that owns no behaviour.
 - The collector, the web server, and their shared lifecycle are one container

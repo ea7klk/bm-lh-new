@@ -174,7 +174,7 @@ the old account with `mcli admin user svcacct rm silo <access-key>`.
 | `S3_REGION` | `us-east-1` | Accepted by Silo, unused for signing. |
 | `S3_ADDRESSING_STYLE` | `path` | Silo is path-style (`host/bucket/key`). |
 | `RAW_ARCHIVE_PREFIX` | `raw-events` | Key prefix inside the bucket. |
-| `RAW_ARCHIVE_INTERVAL_SECONDS` | `3600` | How often the background loop looks for work. |
+| `RAW_ARCHIVE_INTERVAL_SECONDS` | `3600` | Unused since the archive moved to a CronJob; kept for Compose. |
 | `RAW_ARCHIVE_ENABLED` | `true` | Set false to disable the loop; manual runs still work. |
 | `RAW_ARCHIVE_COMPACT` | `true` | Reclaim disk after a pass that evicted days. |
 | `RAW_COMPACT_MIN_ROWS` | `20000` | Only compact when the pass deleted at least this many rows. |
@@ -186,9 +186,9 @@ same reason. Nothing fails, and nothing is deleted.
 
 ## How a run works
 
-The archiver is a thread inside the collector process
-(`dashboard/archiver.py:archive_loop`), started alongside the existing heartbeat
-and talkgroup threads, and it can also be triggered by hand.
+Archiving runs as the `archive-raw-events` CronJob (`manage.py archive_raw_events`),
+or on demand from the admin page. It used to be a thread inside the collector
+process, which meant a collector restart could interrupt a pass mid-flight.
 
 For each eligible day, oldest first:
 
@@ -252,8 +252,12 @@ enough that it is not worth it.
 
 ## Operating
 
-- **Automatic**: the collector thread checks hourly. One day becomes eligible at
-  each UTC midnight, so it archives the previous day shortly after 00:00 UTC.
+- **Automatic**: the `archive-raw-events` CronJob runs daily at 01:17 UTC, so the
+  previous day is complete before it is archived. It is not a thread inside the
+  application any more: the archive is a discrete job with its own pod, its own
+  deadline (`activeDeadlineSeconds: 3600`) and `concurrencyPolicy: Forbid`, so a
+  restart of the web or collector pods cannot interrupt it and a stuck run cannot
+  overlap the next one.
 - **Admin page** (`/administration/`, staff only):
   - an *archive status* panel showing the bucket, cutoff, pending days and rows,
     archived days, rows and size, the ten most recent archived days, and the

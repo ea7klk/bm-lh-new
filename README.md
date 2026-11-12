@@ -38,6 +38,16 @@ docker compose up --build
 The dashboard is available at <http://localhost:8000>. PostgreSQL and pgAdmin
 are included in the stack; PostgreSQL is exposed on port 5432 by default.
 
+The stack runs two application services from the same image:
+
+- `web` — gunicorn, serving the dashboard and API.
+- `collector` — the LastHeard socket.io collector and its heartbeat.
+
+They are separate containers so restarting the web app does not drop the live
+feed. Compose has no scheduler, so the recurring maintenance commands are not run
+automatically here; use `docker compose run --rm web ./entrypoint.sh task <command>` or a
+host cron entry. The Kubernetes deployment runs them as CronJobs.
+
 The production-oriented `compose-dockge.yaml` uses the published
 `ghcr.io/ea7klk/bminfo-new` image and Traefik labels:
 
@@ -55,6 +65,40 @@ The production workloads are deployed by Rancher Fleet from
 [`gitops/production`](gitops/production) tree preserves the SOPS and storage
 handoff definitions; do not apply it as a second controller. Traefik,
 cluster bootstrap, and shared storage remain in `spainip/infra`.
+
+### Process topology
+
+The image takes a role argument, so one build serves every workload:
+
+| Workload | Role | Command | Purpose |
+| --- | --- | --- | --- |
+| `Deployment/web` | `web` | `./entrypoint.sh web` | migrations, static files, gunicorn |
+| `Deployment/collector` | `collector` | `./entrypoint.sh collector` | socket.io collector + heartbeat |
+| `CronJob/*` | — | `python manage.py <command>` | scheduled maintenance |
+
+Each workload is an independent pod. Restarting the web deployment does not
+interrupt collection, and a collector restart does not take the site down.
+
+**Migrations** run in both the web and the collector role, guarded by a
+PostgreSQL advisory lock (`manage.py db_migrate`), because the two pods start
+independently and must not migrate concurrently.
+
+**Scheduled work** is CronJobs rather than threads inside the application, all in
+UTC with `concurrencyPolicy: Forbid`:
+
+| CronJob | Schedule | Command |
+| --- | --- | --- |
+| `archive-raw-events` | 01:17 | `archive_raw_events` |
+| `cleanup-raw-events` | 02:17 | `cleanup_raw_events` |
+| `sync-talkgroups` | 02:47 | `sync_talkgroups --force` |
+| `purge-unverified-users` | 03:17 | `purge_unverified_users` |
+
+The order matters: archiving the previous day runs before the cleanup of today's
+rows, so a day is archived as it was received and the cleanup then reduces what
+tomorrow's archive will contain. `bminfo/dashboard/tests/test_runtime_topology.py`
+reads the manifest and fails if a CronJob names a command that no longer exists,
+if the schedules lose their order, or if the collector is put back into the web
+deployment.
 
 ## Run locally
 

@@ -39,7 +39,7 @@ from django.db import connection, transaction
 from django.utils import timezone
 
 from .models import RawEvent, RawEventArchive
-from .object_store import ObjectStore, ObjectStoreError, get_store, storage_configured
+from .object_store import ObjectStore, ObjectStoreError, get_store
 
 logger = logging.getLogger(__name__)
 
@@ -474,38 +474,3 @@ def iter_archived_payloads(store: ObjectStore | None = None):
                     line = line.strip()
                     if line:
                         yield record.day, json.loads(line)
-
-
-def archive_loop(stop_event, *, interval: int | None = None):
-    """Background loop started alongside the collector.
-
-    Runs the archive pass, then sleeps. If a pass archived nothing it keeps
-    sleeping at the configured interval; there is no burst behaviour because at
-    most one day becomes eligible per UTC midnight.
-    """
-    period = interval or settings.RAW_ARCHIVE_INTERVAL_SECONDS
-    problem = None if storage_configured() else "object storage is not configured"
-    if not settings.RAW_ARCHIVE_ENABLED:
-        logger.info("raw-event archiving is disabled (RAW_ARCHIVE_ENABLED=false)")
-        return
-    if problem:
-        logger.warning("raw-event archiving idle: %s", problem)
-        return
-
-    logger.info("raw-event archiving enabled; checking every %ds", period)
-    while not stop_event.is_set():
-        try:
-            summary = archive_pending()
-            if summary.days:
-                logger.info(
-                    "archive pass: %d day(s), %d rows archived, %d rows deleted",
-                    len(summary.days), summary.rows_archived, summary.rows_deleted,
-                )
-            for failure in summary.errors:
-                logger.error("archive pass error for %s: %s", failure.day, failure.error)
-        except Exception:
-            logger.exception("raw-event archive pass failed")
-        finally:
-            from django.db import connections
-            connections.close_all()
-        stop_event.wait(period)
