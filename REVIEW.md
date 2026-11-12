@@ -1541,7 +1541,10 @@ Traced and found sound, so the scope of the "clean" claim is honest.
 - **Connection budget at the current worker count.** 24 of 120 connections in
   use (18 idle, 1 active) with three Uvicorn workers, one collector, pgAdmin and
   the CronJob — consistent with the documented "three workers, 120 connections"
-  target. The caveat is in "Scalability": under concurrent load a worker holds
+  target. After the v1.2.19 split it measures **7 of 120**: the collector no
+  longer shares the web pod's process group, and the maintenance work is
+  transient Job pods rather than long-lived threads, so idle connections do not
+  accumulate between runs. The caveat is in "Scalability": under concurrent load a worker holds
   several connections, not one (measured 34 at 6 workers and 45 at 12), so the
   budget is not at risk today but is the reason worker count should not be
   raised without a pooler.
