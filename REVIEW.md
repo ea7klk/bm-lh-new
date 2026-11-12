@@ -291,6 +291,15 @@ It also moved out of the request path: `manage.py rebuild_qsos` and the admin
 button both run it in a background thread, with `--days` and `--database-only` to
 bound a spot check. See `OBJECT-STORAGE.md`.
 
+**A regression this fix introduced, and the guard for it.** The first version
+accepted events with no destination name, which the collector refuses, so
+replaying archived days invented 70,104 QSOs — about doubling the two days it
+touched. They were identified by `destination_name IS NULL` plus the run's
+timestamp, deleted, and `test_rebuild_parity.py` now asserts that the rebuild and
+`collector.store_event` reach the same decision on the same events, including the
+missing-name case. The lesson generalises: derived-data regeneration has to share
+the ingestion rules, not restate them.
+
 **Residual.** The rebuild still cannot recreate a QSO whose raw event exists
 nowhere — neither in the table nor in an archived day. With archiving in place
 that requires deleting an object from the bucket, so it is a deliberate act

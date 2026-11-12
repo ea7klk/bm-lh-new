@@ -74,6 +74,14 @@ def iter_archive_rows(*, store=None):
         yield day.isoformat(), row
 
 
+def _talkgroup_names() -> dict[int, str]:
+    """Destination names by id, so a missing payload name can fall back.
+
+    Cached for the life of one pass: the table holds a few thousand rows.
+    """
+    return {tg.talkgroup_id: tg.name for tg in Talkgroup.objects.all() if tg.name}
+
+
 def _as_datetime(value):
     """Coerce a value from the table or from JSON into an aware datetime."""
     if value is None or isinstance(value, datetime):
@@ -85,8 +93,17 @@ def _as_datetime(value):
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=dt_timezone.utc)
 
 
-def _candidate(payload: dict, start_at, stop_at, *, threshold: float, exclude_talkgroup: int):
-    """Return the QSO field dict for one event, or None if it is not a QSO."""
+def _candidate(payload: dict, start_at, stop_at, *, threshold: float, exclude_talkgroup: int,
+               talkgroup_names: dict[int, str] | None = None):
+    """Return the QSO field dict for one event, or None if it is not a QSO.
+
+    The rules mirror ``collector.store_event`` exactly, in the same order. In
+    particular an event with no destination name — neither in the payload nor on
+    the talkgroup — does **not** become a QSO, because the collector refuses it
+    too. Getting this wrong makes a rebuild invent QSOs the live path never
+    created, which is what happened in v1.2.16 and is why the parity test in
+    ``test_rebuild_parity`` exists.
+    """
     start_at = _as_datetime(start_at)
     stop_at = _as_datetime(stop_at)
     if not start_at or not stop_at:
@@ -105,9 +122,14 @@ def _candidate(payload: dict, start_at, stop_at, *, threshold: float, exclude_ta
         destination = int(destination) if destination is not None else None
     except (TypeError, ValueError):
         destination = None
-    if destination is None or destination in NON_QSO_DESTINATION_IDS:
+    if destination in NON_QSO_DESTINATION_IDS:
         return None
-    if destination == exclude_talkgroup or destination > 999999:
+    if destination is None or destination == exclude_talkgroup or destination > 999999:
+        return None
+    destination_name = value("DestinationName", "destination_name")
+    if not destination_name and talkgroup_names:
+        destination_name = talkgroup_names.get(destination)
+    if not destination_name:
         return None
     return {
         "session_id": None,  # filled by the caller
@@ -116,7 +138,7 @@ def _candidate(payload: dict, start_at, stop_at, *, threshold: float, exclude_ta
         "source_name": value("SourceName", "source_name"),
         "talkgroup_id": destination,
         "destination_call": value("DestinationCall", "destination_call"),
-        "destination_name": value("DestinationName", "destination_name"),
+        "destination_name": destination_name,
         "context_id": value("ContextID", "context_id"),
         "link_call": value("LinkCall", "link_call"),
         "link_name": value("LinkName", "link_name"),
@@ -153,6 +175,11 @@ def rebuild_from_sources(*, threshold: float, exclude_talkgroup: int, include_ar
             name = next((row["destination_name"] for row in batch if row["talkgroup_id"] == missing and row["destination_name"]), None)
             if name:
                 Talkgroup.objects.get_or_create(talkgroup_id=missing, defaults={"name": str(name)})
+        # A row whose destination name resolved to nothing would insert a QSO
+        # with a NULL name, which the live collector never does.
+        batch = [row for row in batch if row["destination_name"]]
+        if not batch:
+            return 0
         with transaction.atomic():
             QSO.objects.bulk_create(
                 [QSO(**row) for row in batch],
@@ -170,6 +197,7 @@ def rebuild_from_sources(*, threshold: float, exclude_talkgroup: int, include_ar
     def consume(rows):
         batch = []
         seen: set[str] = set()
+        names = _talkgroup_names()
         for _source, source_row in rows:
             stats.scanned += 1
             payload = source_row.get("payload") or {}
@@ -184,6 +212,7 @@ def rebuild_from_sources(*, threshold: float, exclude_talkgroup: int, include_ar
                 source_row.get("stop_at"),
                 threshold=threshold,
                 exclude_talkgroup=exclude_talkgroup,
+                talkgroup_names=names,
             )
             if fields is None:
                 stats.skipped += 1

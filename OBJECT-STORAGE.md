@@ -291,6 +291,20 @@ python manage.py rebuild_qsos --days 7        # only the newest 7 archived days
 python manage.py rebuild_qsos --database-only # ignore object storage
 ```
 
+**It must apply the collector's rules exactly.** The rebuild decides which events
+become QSOs, and it has to decide the same way the live collector does — same
+kerchunk threshold, same excluded and out-of-range destinations, and crucially
+the same requirement for a destination name, falling back to the talkgroup's
+name.
+
+v1.2.16 got that last rule wrong: it accepted events with no destination name,
+so replaying two archived days invented **70,104 QSOs** that the live path would
+never have created, roughly doubling those days' totals. The rows were identified
+(they were the only QSOs with a NULL destination name created during the run) and
+deleted, and `dashboard/tests/test_rebuild_parity.py` now compares both paths on
+the same events, including that case. Any change to the QSO rules belongs in both
+places, and that test is what keeps them in step.
+
 Two properties matter:
 
 - **It is not destructive.** Rows are upserted by `session_id`; the table is never
