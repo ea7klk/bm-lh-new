@@ -138,13 +138,13 @@ class MigrationLockTests(TransactionTestCase):
 
 
 @override_settings(RAW_EVENT_KERCHUNK_THRESHOLD_SECONDS=3, RAW_ARCHIVE_COMPACT=True,
-                   RAW_COMPACT_MIN_ROWS=1, RAW_COMPACT_MIN_BYTES=0)
+                   RAW_COMPACT_MIN_BYTES=0)
 class CleanupCompactionTests(TransactionTestCase):
-    """A large cleanup must reclaim the disk, not just free pages.
+    """A cleanup must reclaim the disk, not just free pages.
 
     Production deleted 184,735 rows at 02:17 and left 241 MB holding 74k rows,
-    because the cleanup vacuumed but never compacted and the next archive pass
-    was a day away.
+    because the cleanup vacuumed but never compacted. The decision is based on
+    the table's size, so a run that deletes few rows still fixes inherited bloat.
     """
 
     def _fill(self, count=400):
@@ -179,14 +179,27 @@ class CleanupCompactionTests(TransactionTestCase):
                          "a large delete should compact, not just vacuum")
         self.assertLess(self._heap_bytes(), before)
 
-    def test_small_cleanup_only_vacuums(self):
+    def test_small_table_only_vacuums(self):
+        # Below the size floor a rewrite costs more than it returns.
         self._fill(count=10)
-        with override_settings(RAW_COMPACT_MIN_ROWS=20000):
+        with override_settings(RAW_COMPACT_MIN_BYTES=64 * 1024 * 1024):
             result = clear_irrelevant_raw_events()
 
         self.assertEqual(result["deleted"], 10)
         self.assertTrue(result["compaction"].get("skipped"))
-        self.assertIn("RAW_COMPACT_MIN_ROWS", result["compaction"]["reason"])
+        self.assertIn("already small", result["compaction"]["reason"])
+
+    def test_a_small_delete_still_fixes_inherited_bloat(self):
+        # 74k rows' worth of dead space with only a few rows deleted this run:
+        # the old per-run row threshold skipped exactly this case.
+        self._fill(count=200)
+        later = timezone.now()
+        for index in range(6):
+            make_event(f"extra{index}", event_type="Session-Start", when=later)
+        result = clear_irrelevant_raw_events()
+
+        self.assertEqual(result["deleted"], 206)
+        self.assertFalse(result["compaction"].get("skipped"))
 
     def test_compaction_can_be_disabled(self):
         self._fill(count=50)

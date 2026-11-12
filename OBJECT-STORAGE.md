@@ -249,8 +249,13 @@ The archive pass therefore ends with **one compaction**, which runs
 **The nightly cleanup compacts too.** It deletes duplicates and kerchunks, which
 on the first production run removed 184,735 rows and left 241 MB holding 74k —
 the same bloat problem, a day before the next archive pass would have fixed it.
-`cleanup_raw_events` now applies the same compaction, gated by
-`RAW_COMPACT_MIN_ROWS` and `RAW_COMPACT_MIN_BYTES`.
+`cleanup_raw_events` applies the same compaction.
+
+Its decision is based on the **table's size**, not on how many rows that run
+deleted. Bloat accumulates across runs, so a later cleanup that removes only a
+few thousand rows still inherits a table needing a rewrite; gating on the per-run
+row count left production at 241 MB after an 8,473-row run. `RAW_COMPACT_MIN_BYTES`
+is the gate, and below it the cleanup falls back to a plain `VACUUM`.
 
 `pg_repack` would avoid the lock but is not installed in the PostgreSQL image and
 would need a custom image plus `CREATE EXTENSION`; the lock window here is short

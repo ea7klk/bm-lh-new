@@ -47,23 +47,25 @@ def irrelevant_raw_event_ids() -> list[int]:
     return candidates
 
 
-def clear_irrelevant_raw_events(*, dry_run: bool = False, compact: bool | None = None,
-                                compact_min_rows: int | None = None) -> dict:
+def clear_irrelevant_raw_events(*, dry_run: bool = False, compact: bool | None = None) -> dict:
     """Delete the rows `irrelevant_raw_event_ids` returns, then reclaim the disk.
 
     Returns ``{"deleted": n, "compaction": {...}}``. A dry run reports the count
     without writing.
 
-    Deleting leaves the freed pages in the file, so a cleanup that removes a
-    large number of rows must compact afterwards or the table keeps its old size
-    on disk: a production run deleted 184,735 rows and left 241 MB holding 74k.
-    The same compaction the archive pass uses is therefore applied here, gated on
-    how many rows were deleted.
+    Deleting leaves the freed pages in the file, so a cleanup must compact
+    afterwards or the table keeps its old size on disk: a production run deleted
+    184,735 rows and left 241 MB holding 74k.
+
+    The decision to compact is based on the table's size, not on how many rows
+    this run deleted. Bloat accumulates across runs — a later cleanup that only
+    removes a few thousand rows still inherits a table that needs rewriting — so
+    gating on the per-run row count left production bloated. `compact_raw_events`
+    applies the size floor (`RAW_COMPACT_MIN_BYTES`) and rewrites only when the
+    table is large enough for the rewrite to be worth it.
     """
     if compact is None:
         compact = bool(getattr(settings, "RAW_ARCHIVE_COMPACT", True))
-    if compact_min_rows is None:
-        compact_min_rows = int(getattr(settings, "RAW_COMPACT_MIN_ROWS", 20000))
 
     ids = irrelevant_raw_event_ids()
     if dry_run:
@@ -85,7 +87,7 @@ def clear_irrelevant_raw_events(*, dry_run: bool = False, compact: bool | None =
         logger.info("skipping maintenance of raw_events: inside a transaction")
         return {"deleted": deleted, "compaction": {"skipped": True, "reason": "inside a transaction"}}
 
-    if compact and deleted >= compact_min_rows:
+    if compact:
         compaction = compact_raw_events()
         if compaction.get("skipped"):
             # Too small to be worth rewriting: still mark the freed pages
@@ -97,8 +99,5 @@ def clear_irrelevant_raw_events(*, dry_run: bool = False, compact: bool | None =
         # freed pages reusable for the next inserts.
         with connection.cursor() as cursor:
             cursor.execute("VACUUM (ANALYZE, PARALLEL 0) raw_events")
-        compaction = {
-            "skipped": True,
-            "reason": "below RAW_COMPACT_MIN_ROWS" if not compact_min_rows <= deleted else "compaction disabled",
-        }
+        compaction = {"skipped": True, "reason": "compaction disabled"}
     return {"deleted": deleted, "compaction": compaction}
