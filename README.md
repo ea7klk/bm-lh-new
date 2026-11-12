@@ -144,11 +144,14 @@ INFO dashboard.collector collector progress: 3400 rows inserted since restart
 
 - **A row** is one raw event plus any QSO it produced, so a completed session
   counts two and an event filtered out before storage counts nothing.
-- **Insertions, not writes.** LastHeard delivers the same event more than once
-  (on several callback threads, and again after a reconnect), and each delivery
-  updates the existing row. Counting writes runs about seven times higher than
-  the rows the table actually gains — roughly 1M writes a day against 130k
-  archived rows — so only genuine inserts are counted.
+- **Insertions, not writes.** LastHeard delivers the same event more than once —
+  on several callback threads, and again after a reconnect — and each delivery
+  updates the existing row. Counting writes runs about 1.4× higher than the rows
+  the table gains, so only genuine inserts are counted.
+- **Most inserted rows do not survive the night.** A day inserts roughly 650k
+  rows but archives as about 130k: the nightly cleanup removes `Session-Start`,
+  `Session-Update` and duplicate `Session-Stop` rows before archiving. The
+  progress count therefore reports ingestion throughput, not archive size.
 - **Talkgroup catalogue rows** are reference data and are not counted.
 - **Since restart**: the counter lives for the whole collector run, so reconnects
   inside the retry loop do not reset it.
