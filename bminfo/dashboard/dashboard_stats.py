@@ -16,10 +16,16 @@ fast path cannot drift from the ORM path.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 
-from django.db import connection
+from django.conf import settings
+from django.db import connection, transaction
 from django.utils import timezone
+
+# Accepted work_mem spellings pass through to PostgreSQL; anything else is
+# dropped rather than sent, so a typo cannot take the dashboard down.
+_WORK_MEM_PATTERN = re.compile(r"^(?!0+\s*(kB|MB|GB)?$)\d{1,7}(kB|MB|GB)?$")
 
 # Values of source_call that are not a real station. Mirrors the
 # ``valid_callsign`` predicate that previously lived as Q objects in core_views.
@@ -156,9 +162,20 @@ def load_dashboard_stats(qsos, *, start, bucket_seconds, bucket_count, row_limit
     ]
 
     sql = _SQL.format(base=base_sql)
-    with connection.cursor() as cursor:
-        cursor.execute(sql, params)
-        agg, talkgroups, callsigns, histogram = cursor.fetchone()
+    work_mem = str(getattr(settings, "DASHBOARD_WORK_MEM", "") or "").strip()
+    if not _WORK_MEM_PATTERN.match(work_mem):
+        work_mem = None
+
+    # The two count(DISTINCT ...) sorts and the callsign grouping spill about
+    # 10 MB each against the default 8 MB work_mem. Raising it for this one
+    # statement removes those spills; SET LOCAL scopes it to the transaction so
+    # no other query on this connection inherits it.
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            if work_mem:
+                cursor.execute("SELECT set_config('work_mem', %s, true)", [work_mem])
+            cursor.execute(sql, params)
+            agg, talkgroups, callsigns, histogram = cursor.fetchone()
 
     return {
         "summary": agg or {},

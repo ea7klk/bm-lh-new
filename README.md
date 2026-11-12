@@ -169,6 +169,21 @@ them. `dashboard/tests/test_dashboard_single_pass.py` holds the previous
 multi-query implementation as an oracle and compares every response field across
 a matrix of filters; extend that test when the payload changes.
 
+Two things make that statement fast, and both depend on its column list:
+
+- `qsos_cover_idx` covers it. The index is `(start_at DESC)` with
+  `INCLUDE (source_call, source_name, destination_id, duration_ms)`, exactly the
+  five columns the CTE selects, so PostgreSQL answers the scan from the index
+  alone. Adding a column to the CTE without adding it to the index silently
+  drops it back to heap reads; `test_dashboard_performance.py` asserts both
+  lists agree.
+- `DASHBOARD_WORK_MEM` (default `64MB`, empty inherits the server setting) is
+  applied per transaction with `SET LOCAL`, so it is never inherited by another
+  query on the pooled connection. Malformed values are ignored rather than sent.
+
+Together they take the week-range payload from roughly 1.76 s to 1.42 s of
+database time on production-density data. See `REVIEW.md` for the measurements.
+
 ## Data behavior
 
 One completed BrandMeister `SessionID` represents one QSO. Duration is computed
@@ -221,6 +236,14 @@ ORDER BY pg_total_relation_size(oid) DESC;
 The six-month estimate assumes the current seven-day activity rate and the
 current raw-event retention policy; sustained traffic growth or a higher raw
 payload volume requires proportional headroom.
+
+Measured on 2026-11-12, the database is 26 GB: `raw_events` is 21 GB (81%) and
+`qsos` 4.9 GB. `raw_events` grows about 95 MB of payload per day and, with no
+retention applied, still holds every event since collection began. Its 8.3 GB of
+indexes include a redundant `varchar_pattern_ops` index on `payload_hash` that
+nothing queries. `REVIEW.md` ("raw_events retention") assesses the options; the
+short version is that a 30-day retention window would take the database to
+roughly 12 GB.
 
 ## Translations
 

@@ -44,14 +44,19 @@ document** — every finding below is recorded, not applied.
   settings actually resolved inside the running pod, container identity,
   resource limits, network policies, database connection usage, table sizes,
   and the age distribution of retained data.
-- Implemented and shipped the two performance changes: migration `0006` adds
-  `qsos_stop_idx` (H5), and the dashboard payload now derives all of its answers
-  from one materialised query (see "Single-pass dashboard query").
-- Implemented, shipped and verified the first of those: migration `0006` adds
-  `qsos_stop_idx` (H5). Build cost,
-  lock behaviour, index size and post-migration query plans were measured on the
-  production-density copy before deploying, then confirmed against production
-  after it (858.6 ms → 0.308 ms, index built in ~2.5 s, 73 MB).
+- Implemented and shipped the performance work: migration `0006` adds
+  `qsos_stop_idx` (H5), the dashboard payload derives all of its answers from one
+  materialised query, migration `0007` adds a covering index for it, and its
+  `work_mem` is now raised per transaction. See "Single-pass dashboard query"
+  and "Covering index and work_mem".
+- Assessed whether `raw_events` belongs in PostgreSQL at all, and whether
+  partitioning it is still worth doing; see "raw_events retention".
+
+Every index and query change above was measured on a production-density copy
+before deploying, then confirmed against production afterwards: `qsos_stop_idx`
+took the live poll from 858.6 ms to 0.308 ms and built in ~2.5 s at 73 MB, and
+the dashboard changes are recorded with their before/after figures in their own
+sections.
 
 Side effects on production, stated for honesty: one `_maintenance_stats()` call
 (91 s of database time, the same work the maintenance page performs on every
@@ -1032,21 +1037,21 @@ Each entry states what was measured, not what is hoped for.
    database time (1.63×)**, and **4.3 → 2.0 s end to end (2.1×)** — five round
    trips down to one, plus no longer shipping 245k timestamps to Python for the
    histogram.
-4. **Covering index `(start_at DESC) INCLUDE (source_call, destination_id,
-   duration_ms)` — about 9% end-to-end** (1.4 → 1.5 req/s; summary 619 → 541 ms).
-   Modest, because the distinct-count sort dominates once heap access is
-   removed. Worth doing alongside 3, not instead of it.
-5. **`work_mem` 8 MB → 64 MB for these queries — 22% on the summary aggregate
-   (619 → 481 ms) and 5% on the callsign group-by.** The distinct counts spill
-   10 MB to disk every time. Set it per role or per transaction, not globally:
-   at 120 connections a global 64 MB is a 7.7 GB worst case.
-6. **Partition `raw_events` by month — retention becomes O(1).** Measured on a
-   1M-row probe: `DELETE` of 995,675 rows took 1.28 s plus **4.32 s of
-   `VACUUM`**, versus **147 ms** to drop an equivalent table. At production size
-   (21 GB, 12.8M rows) the current admin path additionally builds a multi-million
-   element Python list of primary keys first. Monthly partitions with
-   `DETACH`/`DROP` make retention a metadata operation, keep each index small,
-   and make the 91-second maintenance query (M1) tractable table-by-table.
+4. ~~**Covering index on `start_at`**~~ — **done in v1.2.14**, with a correction
+   to the column list. As proposed (`INCLUDE (source_call, destination_id,
+   duration_ms)`) the planner **ignored the index entirely** and kept using
+   `qsos_start_idx`, because the dashboard also selects `source_name`. Adding
+   that fourth column makes it a real Index Only Scan: **9.1%** on the
+   application path (1,764 → 1,603 ms).
+5. ~~**`work_mem` 8 MB → 64 MB for these queries**~~ — **done in v1.2.14**, per
+   transaction. Measured on the whole dashboard query rather than the summary
+   aggregate alone: **12.7%** (1,764 → 1,540 ms). Together with the covering
+   index, **19.6%** (1,764 → 1,418 ms). See "Covering index and work_mem".
+6. **Partition `raw_events` by month — retention becomes O(1).** Still the right
+   mechanism *if* retention is adopted, but it is **not worth doing yet**: see
+   "raw_events retention" below, which finds the table is 81% of the database
+   and has never been pruned, and recommends a batched delete first and
+   partitioning only once the table is much smaller.
 7. **PgBouncer in transaction mode, or a shorter `CONN_MAX_AGE`.** Not a speed
    fix; it removes the connection ceiling described above, so worker count,
    collector, pgAdmin and CronJobs stop competing for 120 slots, and it stops
@@ -1113,12 +1118,12 @@ recovered most of the gap:
 - Grouping on the key instead of key-plus-metadata also stopped an 18 MB
   external merge, because the sort no longer carried text.
 
-**Remaining headroom, measured and not taken.** Two sorts still spill about
-10 MB each, because `work_mem` is 8 MB. Running the same query with
-`SET LOCAL work_mem = '64MB'` measures **1,894 ms** (1.77×). That was left out of
-this change: it needs a second round trip to set the value, and a per-request
-memory override is a decision worth making deliberately. It is item 5 in the
-ranked list above.
+**Remaining headroom at the time.** Two sorts still spilled about 10 MB each
+because `work_mem` was 8 MB; running the same query with
+`SET LOCAL work_mem = '64MB'` measured **1,894 ms** (1.77×). That override was
+left out of v1.2.13 as a deliberate decision rather than an oversight, and was
+then implemented in v1.2.14 together with the covering index — see "Covering
+index and work_mem".
 
 **Equivalence.** `dashboard/tests/test_dashboard_single_pass.py` keeps the
 previous implementation verbatim as an oracle and compares every field of the
@@ -1131,6 +1136,160 @@ deliberate mutations were checked to fail it: grouping callsigns without
 talkgroups by id instead of count. That harness caught a real contract break
 during the work: the first version emitted `qso_count` where the scripts read
 `r.count`.
+
+### Covering index and work_mem (implemented in v1.2.14)
+
+Two changes to the same aggregate query. Both were measured through the real
+application path (`dashboard_payload`) against a copy built to production
+density and width: 3.6M QSOs, 1,000 bytes per heap row against production's
+1,022, 716-byte JSONB payloads against production's 760. Seven runs per
+configuration, medians reported.
+
+| Configuration | Median | Change |
+| --- | --- | --- |
+| no covering index, 8 MB `work_mem` (before) | 1,764 ms | — |
+| no index, 64 MB `work_mem` | 1,540 ms | −12.7% |
+| covering index, 8 MB `work_mem` | 1,603 ms | −9.1% |
+| **covering index + 64 MB `work_mem` (after)** | **1,418 ms** | **−19.6%** |
+
+**The covering index needed a different column list than proposed.** As specified
+— `(start_at DESC) INCLUDE (source_call, destination_id, duration_ms)` — the
+planner never chose it: the dashboard's CTE also selects `source_name`, so the
+index was not covering and `qsos_start_idx` stayed cheaper. With that column
+added, the CTE scan becomes an Index Only Scan at **31 ms instead of 165 ms with
+zero heap fetches**, and it is actually used. The migration is `0007`; the four
+INCLUDE columns are load-bearing and `test_dashboard_performance.py` asserts both
+the column list and that the CTE selects nothing beyond it.
+
+Cost: **202 MB** on the copy (production `qsos_start_idx` is 134 MB) and **3.1 s**
+to build on 3.6M rows. It runs inside `entrypoint.sh`'s migrate step, which is
+well inside the 30-minute `startupProbe`.
+
+The index also makes `qsos_start_idx` redundant — it is a superset for every
+query that index serves. Dropping the older index would reclaim ~134 MB, but it
+was left in place to keep this change reversible.
+
+**`work_mem` is scoped per transaction, not per role.** The two
+`count(DISTINCT ...)` sorts and the callsign grouping spill about 10 MB each at
+the 8 MB default. `dashboard_stats` now wraps its single query in
+`transaction.atomic()` and issues `set_config('work_mem', %s, true)` — the
+`is_local` form, equivalent to `SET LOCAL` — so the value reverts at COMMIT and
+never reaches another query on that pooled connection. This avoids the 7.7 GB
+worst case a global 64 MB would imply across 120 connections.
+
+Two details worth recording:
+
+- The setting is `DASHBOARD_WORK_MEM` (default `64MB`, empty inherits the server
+  value). Values are validated against `^\d{1,7}(kB|MB|GB)?$` before being sent,
+  so a malformed value is dropped rather than allowed to make every dashboard
+  request fail.
+- The scoping was verified with `TransactionTestCase`, not `TestCase`. Under
+  `TestCase` the assertion failed, because Django wraps each test in a
+  transaction that never commits and `SET LOCAL` legitimately outlives the inner
+  `atomic()` block. That is a test artefact rather than a leak: in production the
+  request runs in autocommit and the COMMIT resets it. The test now proves the
+  real behaviour, and `SHOW work_mem` was confirmed to read 8 MB before and after
+  a live request.
+
+**Why the gain is ~20% and not more.** The remaining cost is the aggregation
+itself — sorting and counting 245k rows — not the scan. Once the scan dropped
+from 165 ms to 31 ms there was little left to remove, which is what the original
+"modest, about 9%" note anticipated. Going further needs pre-aggregation, not
+another index.
+
+### raw_events retention (assessment, no change made)
+
+`raw_events` holds every decoded LastHeard event. It is written by the collector
+and read by nothing on the request path. The question was whether it belongs in
+the database at all.
+
+**What it costs today**, measured on production:
+
+| | Value |
+| --- | --- |
+| Rows | 12,979,899 |
+| Total size | **21 GB** — 13 GB heap, 8.3 GB indexes |
+| Share of the 26 GB database | **81%** |
+| Growth | ~130,000 rows and ~95 MB of payload per day, about 2.9 GB/month |
+| Oldest row | 2026-07-30, i.e. the day collection started |
+
+**Indexes dominate more than the data.** Five indexes total 8.3 GB, a 64%
+overhead on the heap:
+
+| Index | Size | Note |
+| --- | --- | --- |
+| `raw_events_received_idx` | 2,418 MB | `(received_at DESC)`; 81 scans ever |
+| `raw_events_pkey` | 1,744 MB | surrogate `id` |
+| `raw_events_payload_hash_key` | 1,613 MB | unique btree, needed for the collector's upsert |
+| `raw_events_payload_hash_8c305e07_like` | 1,609 MB | **Django's automatic `varchar_pattern_ops` index** |
+| `raw_events_session_idx` | 954 MB | `session_id`; 75 scans ever |
+
+The `_like` index is the interesting one. Django creates a second
+`varchar_pattern_ops` btree for any indexed `CharField` so that prefix
+(`LIKE 'abc%'`) lookups can use an index. Nothing in this codebase issues one:
+`payload_hash` is only ever compared for equality (`update_or_create` in the
+collector) and searched with `icontains` in the admin, which compiles to
+`UPPER(..) LIKE UPPER(%s)` and cannot use `varchar_pattern_ops` at all. The
+unique btree on the same column serves the equality lookups. **Dropping it
+reclaims 1.6 GB with no query affected**, and the same reasoning applies to
+`qsos_session_id_450b4bad_like` (278 MB) on `qsos`.
+
+**Who reads it.** Only administrative tools: `rebuild_qsos` (reconstruct the QSO
+table from raw events), `clear_irrelevant_raw_events`, the retention counters and
+`_maintenance_stats`. No dashboard, report, profile or API query touches it.
+`AGENTS.md` lists raw-event retention as a data invariant, so it is an audit
+trail by design rather than an incidental table.
+
+**Does it need to be in PostgreSQL?** For runtime purposes, no. For the
+operational purposes above, it has real value — `rebuild_qsos` is the only way to
+regenerate `qsos` if the derived table is ever damaged. The honest answer is that
+it does not need to be *all* in PostgreSQL, indefinitely:
+
+1. **Prune it (highest value, lowest risk).** Measured against production, a
+   retention window would delete:
+
+   | Keep | Rows deleted | Payload freed |
+   | --- | --- | --- |
+   | 30 days | 8.96M (69%) | 6.4 GB |
+   | 60 days | 5.19M (40%) | 3.7 GB |
+   | 90 days | 1.39M (11%) | 1.0 GB |
+
+   Thirty days would take the database from 26 GB to roughly 12 GB. The existing
+   admin button materialises every matching primary key into a Python list first,
+   which at this size is the wrong shape; it should batch by `id` range or
+   `received_at`, and be scheduled rather than clicked.
+2. **Drop the redundant pattern-ops indexes.** 1.6 GB on `raw_events` and 278 MB
+   on `qsos`, no behaviour change. This is the cheapest single action available.
+3. **Move the archive to object storage if it must be kept.** The payloads are
+   opaque JSONB that nothing queries by field. Writing them as compressed
+   Parquet or JSONL to object storage would remove the audit trail from the
+   database entirely, at the cost of a restore step for `rebuild_qsos`. Worth it
+   only if a retention window is unacceptable.
+4. **A columnar store is not warranted at this size.** ClickHouse would compress
+   the payloads well and answer the maintenance aggregates instantly, but 21 GB
+   and 130k rows/day is far below the point where operating a second database
+   pays for itself. Revisit if the payload outgrows the row data.
+
+**Is partitioning (item 6) still needed?** Not yet, and the order matters.
+
+Partitioning earns its keep by making retention a metadata operation: measured
+earlier, deleting a million rows costs 1.28 s plus 4.32 s of `VACUUM`, while
+dropping an equivalent partition takes 147 ms. At 13M rows the current delete
+plus index maintenance would run for minutes and leave the table bloated.
+
+But partitioning now would mean rewriting 21 GB into a partitioned table — a
+large, disruptive migration — to solve a problem that only exists once retention
+runs. The cheaper sequence is:
+
+1. Add a batched retention delete and actually enable it, which drains 9M rows
+   and shrinks the table to roughly a third.
+2. Partition what remains, which is then a far smaller migration.
+3. After that, retention becomes `DETACH`/`DROP` and the maintenance queries in
+   M1 become per-partition instead of whole-table.
+
+If the table is instead moved to object storage (option 3 above), partitioning
+becomes moot. **So item 6 stays open, gated on the retention decision, and should
+not be started before it.**
 
 ### Would moving to a non-relational database help?
 
@@ -1214,7 +1373,7 @@ reversible, and keeps the ORM's transactional guarantees where they matter.
 
 | Tier | Trigger | Changes |
 | --- | --- | --- |
-| **Now** (12 accounts, 25 target) | — | ~~`stop_at` index (H5)~~ — done in v1.2.6; ~~single-pass dashboard query~~ — done in v1.2.13. Remaining: 20–30 s response cache, covering index, `work_mem` 64 MB for the aggregate queries. Keep 3 workers. |
+| **Now** (12 accounts, 25 target) | — | ~~`stop_at` index (H5)~~ — v1.2.6; ~~single-pass dashboard query~~ — v1.2.13; ~~covering index and per-transaction `work_mem`~~ — v1.2.14. Remaining: 20–30 s response cache. Keep 3 workers. |
 | **~100–500 concurrent readers** | sustained >5 req/s on the dashboard, or probe flaps | Add PgBouncer, then 4–6 workers; partition `raw_events`; move the admin maintenance work to Jobs (M1); put a read replica behind the analytics endpoints. |
 | **~1,000+ concurrent, or 10× ingest** | write latency or query times growing without a code change | Timescale continuous aggregates (or ClickHouse fed by the collector) for analytics; Redis channel layer for live updates; move `raw_events` to object storage. Keep PostgreSQL for identity, tokens and ingestion. |
 | **Any tier** | — | Do not raise `APP_WORKERS` past ~6 without PgBouncer. Measured: no throughput gain, worse latency, and a hard connection ceiling. |
@@ -1341,14 +1500,14 @@ Traced and found sound, so the scope of the "clean" claim is honest.
    container with limits and a NetworkPolicy.
 8. **M8 + L2 + L9 — the account-flow edges.** A resend endpoint removes the
    three-day dead zone and makes the enumeration trade-off a conscious one.
-9. ~~**Single-pass dashboard query**~~ — **done** (see "Single-pass dashboard
-   query": 1.63× measured on production, and a correction to the earlier
-   estimate). Remaining scalability follow-ups: partition `raw_events` by month
-   so retention is a metadata operation, add PgBouncer before touching
-   `APP_WORKERS`, and move `raw_events` payloads to object storage to shrink the
-   database by ~80%. If volume grows 10×, add Timescale continuous aggregates or
-   ClickHouse as a derived analytics store; do not migrate the primary database
-   (see "Scalability").
+9. ~~**Single-pass dashboard query**~~, ~~**covering index**~~ and ~~**per-request
+   `work_mem`**~~ — **done** (v1.2.13 and v1.2.14; see their sections, including
+   the correction to the index's proposed column list). Remaining scalability
+   work, in order: **enable `raw_events` retention** (the batched delete
+   described in "raw_events retention"), drop the redundant pattern-ops indexes,
+   add a 20–30 s response cache, and add PgBouncer before touching
+   `APP_WORKERS`. Partitioning `raw_events` comes after retention has shrunk the
+   table, not before.
 10. **L1, L3, L4, L6, L7 — close out** as their own small changes.
 
 ## Limits

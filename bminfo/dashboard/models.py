@@ -127,6 +127,15 @@ class QSO(models.Model):
             # second per open page, ordered by stop_at. Without this index
             # PostgreSQL answers it with a full scan of every QSO.
             models.Index(fields=["-stop_at"], name="qsos_stop_idx"),
+            # Covers the dashboard's range scan. The five columns below are
+            # exactly what dashboard_stats selects, so PostgreSQL can answer
+            # that scan from the index alone. "talkgroup" is the field; its
+            # column is destination_id.
+            models.Index(
+                fields=["-start_at"],
+                name="qsos_cover_idx",
+                include=["source_call", "source_name", "talkgroup", "duration_ms"],
+            ),
         ]
 
     def __str__(self):

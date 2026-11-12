@@ -119,6 +119,10 @@ APP_PUBLIC_URL = os.getenv("APP_PUBLIC_URL", "http://localhost:8000").rstrip("/"
 EMAIL_VERIFICATION_HOURS = int(os.getenv("EMAIL_VERIFICATION_HOURS", "48"))
 UNVERIFIED_USER_RETENTION_DAYS = int(os.getenv("UNVERIFIED_USER_RETENTION_DAYS", "5"))
 PASSWORD_RESET_HOURS = int(os.getenv("PASSWORD_RESET_HOURS", "1"))
+# Per-transaction work_mem for the dashboard aggregate. Its two
+# count(DISTINCT) sorts spill about 10 MB each at the 8 MB default.
+# Set to an empty string to inherit the server setting.
+DASHBOARD_WORK_MEM = os.getenv("DASHBOARD_WORK_MEM", "64MB")
 MATOMO_ENABLED = env_bool("MATOMO_ENABLED", False)
 MATOMO_URL = os.getenv("MATOMO_URL", "")
 MATOMO_SITE_ID = os.getenv("MATOMO_SITE_ID", "")
