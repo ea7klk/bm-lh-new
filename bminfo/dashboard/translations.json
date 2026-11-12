@@ -2,7 +2,7 @@
   "en": {
     "donation": {
       "donate": "Donate",
-      "title": "Support BrandMeister Lastheard",
+      "title": "Support BrandMeister Statistics by EA7KLK",
       "description": "Enjoying the live DMR activity and statistics? A coffee helps EA7KLK keep this project running. Thank you for your support!",
       "support": "Support EA7KLK on Ko-fi",
       "later": "Maybe later",
@@ -17,11 +17,22 @@
       "dashboard": "\u2190 Dashboard",
       "accounts": "BrandMeister accounts",
       "language": "Language",
-      "recordsRetrieved": "Records retrieved: {records}, query took {seconds} seconds"
+      "recordsRetrieved": "Records retrieved: {records}, query took {seconds} seconds",
+      "appName": "BrandMeister Statistics by EA7KLK",
+      "siteTagline": "LastHeard statistics",
+      "navigation": "Statistics",
+      "account": "Account",
+      "home": "Dashboard"
+    },
+    "disclaimer": {
+      "work": "This site is my own work.",
+      "data": "All data shown here is obtained from the BrandMeister LastHeard service.",
+      "affiliation": "This site is not affiliated with, endorsed by, or supported by BrandMeister.",
+      "asIs": "It is provided as-is, without any claim of completeness, accuracy, or fitness for a particular purpose."
     },
     "about": {
       "title": "About the project",
-      "intro": "BrandMeister Lastheard collects and presents live DMR activity, QSO statistics, talkgroup activity and reporting tools.",
+      "intro": "This site collects and presents live DMR activity, QSO statistics, talkgroup activity and reporting tools from the BrandMeister LastHeard service.",
       "project": "Project",
       "repository": "Source code",
       "repositoryText": "The project is developed as open source on GitHub.",
@@ -103,7 +114,7 @@
       "liveQsos": "Live QSOs",
       "registeredUsers": "Registered users",
       "registrationNotice": "have access to enhanced functions like reports, live QSOs, additional query options by callsign and talkgroup and longer time ranges up to three months",
-      "title": "BrandMeister Lastheard",
+      "title": "BrandMeister Statistics by EA7KLK",
       "subtitle": "Live DMR activity, talkgroup statistics and talk time",
       "liveFeed": "live feed",
       "login": "Log in",
@@ -575,7 +586,7 @@
   "es": {
     "donation": {
       "donate": "Donar",
-      "title": "Apoya BrandMeister Lastheard",
+      "title": "Apoya Estad\u00edsticas de BrandMeister por EA7KLK",
       "description": "\u00bfTe gustan la actividad DMR en directo y las estad\u00edsticas? Un caf\u00e9 ayuda a EA7KLK a mantener este proyecto. \u00a1Gracias por tu apoyo!",
       "support": "Apoya a EA7KLK en Ko-fi",
       "later": "Quiz\u00e1s m\u00e1s tarde",
@@ -590,11 +601,22 @@
       "dashboard": "\u2190 Panel",
       "accounts": "Cuentas BrandMeister",
       "language": "Idioma",
-      "recordsRetrieved": "Registros recuperados: {records}, la consulta tardó {seconds} segundos"
+      "recordsRetrieved": "Registros recuperados: {records}, la consulta tardó {seconds} segundos",
+      "appName": "Estad\u00edsticas de BrandMeister por EA7KLK",
+      "siteTagline": "Estad\u00edsticas LastHeard",
+      "navigation": "Estad\u00edsticas",
+      "account": "Cuenta",
+      "home": "Panel"
+    },
+    "disclaimer": {
+      "work": "Este sitio es trabajo propio.",
+      "data": "Todos los datos que se muestran aqu\u00ed proceden del servicio LastHeard de BrandMeister.",
+      "affiliation": "Este sitio no est\u00e1 afiliado a BrandMeister ni cuenta con su respaldo o soporte.",
+      "asIs": "Se ofrece tal cual, sin garant\u00eda alguna de exhaustividad, exactitud o idoneidad para un fin determinado."
     },
     "about": {
       "title": "Sobre el proyecto",
-      "intro": "BrandMeister Lastheard recopila y presenta actividad DMR en directo, estadísticas de QSOs, actividad de grupos de conversación y herramientas de informes.",
+      "intro": "Este sitio recopila y presenta actividad DMR en directo, estadísticas de QSOs, actividad de grupos de conversación y herramientas de informes a partir del servicio LastHeard de BrandMeister.",
       "project": "Proyecto",
       "repository": "Código fuente",
       "repositoryText": "El proyecto se desarrolla como software de código abierto en GitHub.",
@@ -676,7 +698,7 @@
       "liveQsos": "QSOs en directo",
       "registeredUsers": "Los usuarios registrados",
       "registrationNotice": "tienen acceso a funciones mejoradas, como informes, QSOs en directo, opciones de consulta adicionales por indicativo y grupo de conversaci\u00f3n y rangos de tiempo m\u00e1s amplios de hasta tres meses",
-      "title": "BrandMeister Lastheard",
+      "title": "Estadísticas de BrandMeister por EA7KLK",
       "subtitle": "Actividad DMR en directo, estad\u00edsticas de grupos y tiempo de transmisi\u00f3n",
       "liveFeed": "emisi\u00f3n en directo",
       "login": "Iniciar sesi\u00f3n",
@@ -1148,7 +1170,7 @@
   "de": {
     "donation": {
       "donate": "Spenden",
-      "title": "Unterst\u00fctze BrandMeister Lastheard",
+      "title": "Unterst\u00fctze BrandMeister-Statistiken von EA7KLK",
       "description": "Dir gefallen die DMR-Liveaktivit\u00e4t und die Statistiken? Ein Kaffee hilft EA7KLK, dieses Projekt am Laufen zu halten. Vielen Dank f\u00fcr deine Unterst\u00fctzung!",
       "support": "EA7KLK auf Ko-fi unterst\u00fctzen",
       "later": "Vielleicht sp\u00e4ter",
@@ -1163,11 +1185,22 @@
       "dashboard": "\u2190 Dashboard",
       "accounts": "BrandMeister-Konten",
       "language": "Sprache",
-      "recordsRetrieved": "Abgerufene Datensätze: {records}, Abfrage dauerte {seconds} Sekunden"
+      "recordsRetrieved": "Abgerufene Datensätze: {records}, Abfrage dauerte {seconds} Sekunden",
+      "appName": "BrandMeister-Statistiken von EA7KLK",
+      "siteTagline": "LastHeard-Statistiken",
+      "navigation": "Statistiken",
+      "account": "Konto",
+      "home": "\u00dcbersicht"
+    },
+    "disclaimer": {
+      "work": "Diese Seite ist meine eigene Arbeit.",
+      "data": "Alle hier gezeigten Daten stammen aus dem LastHeard-Dienst von BrandMeister.",
+      "affiliation": "Diese Seite ist nicht mit BrandMeister verbunden und wird von BrandMeister weder unterst\u00fctzt noch bef\u00fcrwortet.",
+      "asIs": "Sie wird ohne Gew\u00e4hr bereitgestellt, ohne Anspruch auf Vollst\u00e4ndigkeit, Richtigkeit oder Eignung f\u00fcr einen bestimmten Zweck."
     },
     "about": {
       "title": "Über das Projekt",
-      "intro": "BrandMeister Lastheard sammelt und präsentiert DMR-Live-Aktivität, QSO-Statistiken, Talkgroup-Aktivität und Berichtswerkzeuge.",
+      "intro": "Diese Seite sammelt und präsentiert DMR-Live-Aktivität, QSO-Statistiken, Talkgroup-Aktivität und Berichtswerkzeuge aus dem LastHeard-Dienst von BrandMeister.",
       "project": "Projekt",
       "repository": "Quellcode",
       "repositoryText": "Das Projekt wird als Open-Source-Software auf GitHub entwickelt.",
@@ -1249,7 +1282,7 @@
       "liveQsos": "Live-QSOs",
       "registeredUsers": "Registrierte Benutzer",
       "registrationNotice": "haben Zugriff auf erweiterte Funktionen wie Berichte, Live-QSOs, zus\u00e4tzliche Abfrageoptionen nach Rufzeichen und Sprechgruppe sowie l\u00e4ngere Zeitr\u00e4ume von bis zu drei Monaten",
-      "title": "BrandMeister Lastheard",
+      "title": "BrandMeister-Statistiken von EA7KLK",
       "subtitle": "DMR-Live-Aktivit\u00e4t, Talkgroup-Statistiken und Sprechzeit",
       "liveFeed": "Live-Feed",
       "login": "Anmelden",
@@ -1721,7 +1754,7 @@
   "fr": {
     "donation": {
       "donate": "Faire un don",
-      "title": "Soutenez BrandMeister Lastheard",
+      "title": "Soutenez Statistiques BrandMeister par EA7KLK",
       "description": "Vous appr\u00e9ciez l\u2019activit\u00e9 DMR en direct et les statistiques ? Un caf\u00e9 aide EA7KLK \u00e0 faire vivre ce projet. Merci pour votre soutien !",
       "support": "Soutenir EA7KLK sur Ko-fi",
       "later": "Peut-\u00eatre plus tard",
@@ -1736,11 +1769,22 @@
       "dashboard": "\u2190 Tableau de bord",
       "accounts": "Comptes BrandMeister",
       "language": "Langue",
-      "recordsRetrieved": "Enregistrements récupérés : {records}, requête effectuée en {seconds} secondes"
+      "recordsRetrieved": "Enregistrements récupérés : {records}, requête effectuée en {seconds} secondes",
+      "appName": "Statistiques BrandMeister par EA7KLK",
+      "siteTagline": "Statistiques LastHeard",
+      "navigation": "Statistiques",
+      "account": "Compte",
+      "home": "Tableau de bord"
+    },
+    "disclaimer": {
+      "work": "Ce site est mon propre travail.",
+      "data": "Toutes les donn\u00e9es affich\u00e9es ici proviennent du service LastHeard de BrandMeister.",
+      "affiliation": "Ce site n'est ni affili\u00e9 \u00e0 BrandMeister, ni approuv\u00e9, ni soutenu par BrandMeister.",
+      "asIs": "Il est fourni tel quel, sans aucune garantie d'exhaustivit\u00e9, d'exactitude ou d'adaptation \u00e0 un usage particulier."
     },
     "about": {
       "title": "À propos du projet",
-      "intro": "BrandMeister Lastheard collecte et présente l'activité DMR en direct, les statistiques de QSOs, l'activité des groupes et des outils de rapports.",
+      "intro": "Ce site collecte et présente l'activité DMR en direct, les statistiques de QSOs, l'activité des groupes et des outils de rapports à partir du service LastHeard de BrandMeister.",
       "project": "Projet",
       "repository": "Code source",
       "repositoryText": "Le projet est développé en logiciel libre sur GitHub.",
@@ -1822,7 +1866,7 @@
       "liveQsos": "QSOs en direct",
       "registeredUsers": "Les utilisateurs inscrits",
       "registrationNotice": "ont acc\u00e8s \u00e0 des fonctionnalit\u00e9s avanc\u00e9es comme les rapports, les QSOs en direct, des options de recherche suppl\u00e9mentaires par indicatif et groupe de conversation et des p\u00e9riodes plus longues allant jusqu\u2019\u00e0 trois mois",
-      "title": "BrandMeister Lastheard",
+      "title": "Statistiques BrandMeister par EA7KLK",
       "subtitle": "Activit\u00e9 DMR en direct, statistiques des groupes et temps de parole",
       "liveFeed": "flux en direct",
       "login": "Se connecter",

@@ -1,81 +1,287 @@
+{% load static %}
 <!doctype html>
 <html lang="{{ app_locale|default:'en' }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}{{ labels.common.appName|default:'BrandMeister Lastheard' }}{% endblock %}</title>
+  <title>{% block title %}{{ labels.common.appName|default:'BrandMeister Statistics by EA7KLK' }}{% endblock %}</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="{% static 'dashboard/favicon-32.png' %}">
+  <link rel="apple-touch-icon" sizes="180x180" href="{% static 'dashboard/apple-touch-icon.png' %}">
+  <meta name="theme-color" content="#dd4b39">
   <style>
-    :root{--ink:#1f2937;--muted:#667085;--purple:#667eea;--violet:#764ba2;--line:#e8eaf0}
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;padding:22px;background:linear-gradient(135deg,#667eea,#764ba2);font-family:Inter,system-ui,sans-serif;color:var(--ink)}.shell{max-width:1440px;margin:auto}.panel{background:#fff;border-radius:14px;box-shadow:0 18px 55px #1e153a33;margin-bottom:20px}.hero{padding:27px 30px;text-align:center}.hero h1{margin:0 0 8px}.hero p{margin:0;color:var(--muted)}.nav{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:16px}.button,.nav a{display:inline-block;border:0;border-radius:8px;padding:9px 13px;background:linear-gradient(135deg,var(--purple),var(--violet));color:#fff;text-decoration:none;font-weight:700;cursor:pointer}.button.secondary{background:#eef0f7;color:#4f46a5}.section{padding:23px 25px}.section h2{text-align:center}.controls{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;padding:18px}.control{display:flex;flex-direction:column;gap:5px}.control label{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase}.control select,.control input,.control textarea{min-height:40px;padding:8px 10px;border:2px solid #e5e7eb;border-radius:8px;background:#fff;font:inherit}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.stat{padding:18px 20px;text-align:center}.stat small{display:block;color:var(--muted);font-weight:700;text-transform:uppercase}.stat strong{display:block;margin-top:8px;font-size:27px}.charts{display:grid;grid-template-columns:1fr 1fr;gap:20px}.bars{display:flex;flex-direction:column;gap:8px}.bar{display:grid;grid-template-columns:170px 1fr 65px;gap:8px;align-items:center;font-size:13px}.bar label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.track{height:18px;background:#eef0f7;border-radius:5px;overflow:hidden}.fill{height:100%;background:linear-gradient(90deg,var(--purple),var(--violet))}.value{text-align:right;color:var(--muted);font-weight:700}.histogram{display:flex;align-items:end;gap:3px;height:220px;border-bottom:1px solid var(--line);padding:15px 3px 24px}.histogram i{display:block;flex:1;background:linear-gradient(180deg,var(--violet),var(--purple));min-width:5px;border-radius:4px 4px 0 0}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:9px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{background:linear-gradient(135deg,var(--purple),var(--violet));color:#fff;font-size:12px;text-transform:uppercase}.footer{text-align:center;color:#fff;padding:8px}.message{padding:12px 15px;background:#fff7ed;border-radius:8px;margin-bottom:15px}.success{background:#ecfdf3;color:#166534}.error{background:#fff1f2;color:#9f1239}.cookie-consent{position:fixed;inset:auto 18px 18px 18px;z-index:20;background:#fff;padding:18px 20px;border-radius:14px;box-shadow:0 12px 40px #1e153a66;max-width:720px;margin:auto}.cookie-consent[hidden]{display:none}.cookie-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}@media(max-width:900px){.cards{grid-template-columns:repeat(2,1fr)}.charts{grid-template-columns:1fr}}@media(max-width:600px){body{padding:10px}.cards{grid-template-columns:1fr}.bar{grid-template-columns:105px 1fr 48px}}
-  </style><style>.talkgroup-checkboxes{display:flex;flex-direction:column;gap:1px;max-height:150px;min-width:250px;overflow-y:auto;padding:5px 9px;border:2px solid #e5e7eb;border-radius:8px;background:#fff}.talkgroup-checkboxes label{display:flex;align-items:center;gap:8px;min-height:22px;margin:0;font-size:13px;line-height:1.1;text-transform:none;color:var(--ink);font-weight:500;white-space:nowrap}.talkgroup-checkboxes input[type="checkbox"]{flex:0 0 auto;width:auto;min-height:0;margin:0;accent-color:var(--purple)}.language-picker{display:flex;align-items:center;gap:6px;color:#667085;font-size:12px;font-weight:700}.language-picker select{min-height:32px;padding:5px 8px;border:1px solid #e5e7eb;border-radius:7px;background:#fff;color:#374151;font:inherit}</style>
-  </style><style>.talkgroup-checkboxes{display:flex;flex-direction:column;gap:1px;max-height:150px;min-width:250px;overflow-y:auto;padding:5px 9px;border:2px solid #e5e7eb;border-radius:8px;background:#fff}.talkgroup-checkboxes label{display:flex;align-items:center;gap:8px;min-height:22px;margin:0;font-size:13px;line-height:1.1;text-transform:none;color:var(--ink);font-weight:500;white-space:nowrap}.talkgroup-checkboxes input[type="checkbox"]{flex:0 0 auto;width:auto;min-height:0;margin:0;accent-color:var(--purple)}.language-picker{display:flex;align-items:center;gap:6px;color:#667085;font-size:12px;font-weight:700}.language-picker select{min-height:32px;padding:5px 8px;border:1px solid #e5e7eb;border-radius:7px;background:#fff;color:#374151;font:inherit}</style><style>.histogram{overflow-x:auto;overflow-y:visible}.histogram-column{position:relative;display:flex;flex:1;min-width:10px;height:100%;align-items:end;justify-content:center}.histogram-column i{display:block;width:100%;min-height:0}.labeled-histogram{padding-bottom:48px;overflow:visible}.labeled-histogram .histogram-column small{position:absolute;bottom:-42px;left:50%;width:60px;overflow:visible;transform:translateX(-50%) rotate(-45deg);transform-origin:50% 0;font-size:8px;color:var(--muted);text-align:center;white-space:nowrap}.histogram-value{position:absolute;top:-16px;font-size:10px;color:var(--muted);line-height:1;white-space:nowrap}</style>
-  <style>
-    .header-actions{display:flex;align-items:center;justify-content:center;gap:10px;max-width:100%}
-    .nav .donate-button{background:#be185d;white-space:nowrap}
-    .nav .donate-button:hover{background:#9d174d}
-    .nav .donate-button:focus-visible{outline:3px solid #9d174d;outline-offset:3px}
-    @media(max-width:480px){
-      .header-actions{align-items:flex-end;gap:8px}
-      .header-actions .language-picker{flex-direction:column;align-items:flex-start;gap:4px}
-      .header-actions .language-picker select{max-width:120px}
-      .header-actions .donate-button{padding:9px 10px;font-size:14px}
+    /* BrandMeister Classic.
+       Palette and metrics follow brandmeister.network's own stylesheet:
+       accent #dd4b39, frame #ecf0f5, sidebar #222d32, border #d2d6de,
+       header 50px, sidebar 230px, body 14px/20px, square controls.
+       The legacy class names below are part of the template contract used by
+       the dashboard, reports, live and account pages; they are restyled here
+       rather than renamed. */
+    :root{
+      --accent:#dd4b39;--accent-hover:#d73925;--accent-deep:#b03a2b;
+      --frame:#ecf0f5;--surface:#fff;
+      --ink:#3f4a54;--muted:#7b8794;--line:#e3e7ec;--border:#d2d6de;
+      --side:#222d32;--side-top:#1a2226;--side-active:#1e282c;
+      --side-text:#b8c7ce;--side-sub:#8aa4af;
+      --ok:#00a65a;--warn:#f39c12;--info:#3c8dbc;
+      /* aliases kept so page-level styles continue to resolve */
+      --purple:var(--accent);--violet:var(--accent-deep);
+      --side-w:230px;--header-h:50px;
     }
-    form.auth-form,
-    form.stacked-form,
-    form.profile-form {
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-      margin-top: 18px;
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0}
+    body{
+      min-height:100vh;background:var(--frame);color:var(--ink);
+      font:14px/20px "Source Sans Pro","Helvetica Neue",Helvetica,Arial,sans-serif;
+      -webkit-font-smoothing:antialiased;
     }
-    .form-field,
-    form.stacked-form p,
-    form.profile-form p {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      margin: 0;
+    a{color:var(--accent)}
+    a:hover{color:var(--accent-hover)}
+    code,.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.95em}
+
+    /* ---------- shell ---------- */
+    .shell{display:flex;min-height:100vh;align-items:stretch}
+    .sidebar{
+      position:fixed;inset:0 auto 0 0;width:var(--side-w);flex:none;
+      background:var(--side);display:flex;flex-direction:column;z-index:40;overflow-y:auto;
     }
-    .form-field label,
-    form.stacked-form label,
-    form.profile-form label {
-      font-weight: 650;
+    .sidebar-brand{
+      display:flex;align-items:center;gap:9px;padding:12px 15px;min-height:var(--header-h);
+      background:var(--side-top);text-decoration:none;color:#fff;
     }
-    .form-field input,
-    form.stacked-form input,
-    form.stacked-form select,
-    form.stacked-form textarea,
-    form.profile-form input,
-    form.profile-form select,
-    form.profile-form textarea {
-      width: 100%;
+    .sidebar-brand img{width:26px;height:26px;flex:none;object-fit:contain}
+    .sidebar-brand span{font-size:13px;font-weight:600;line-height:1.25;letter-spacing:.15px}
+    .sidebar-brand span em{display:block;font-style:normal;font-weight:400;font-size:11.5px;color:var(--side-sub);margin-top:1px}
+    .sidebar-user{
+      display:flex;align-items:center;gap:10px;padding:12px 15px;
+      border-bottom:1px solid #2b3a40;color:var(--side-text);
     }
-    .form-actions {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 9px;
+    .sidebar-user .avatar{
+      width:32px;height:32px;border-radius:50%;background:#3a4d55;color:#dbe6ea;
+      display:grid;place-items:center;font-size:11.5px;font-weight:700;flex:none;text-transform:uppercase;
     }
-    .auth-form .form-actions {
-      margin-top: 2px;
+    .sidebar-user .who{min-width:0;line-height:1.3}
+    .sidebar-user .who b{display:block;color:#fff;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis}
+    .sidebar-user .who small{color:var(--side-sub);font-size:11.5px}
+    .sidebar-nav{padding:4px 0 18px;flex:none}
+    .sidebar-nav .group{
+      color:#6d8189;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;
+      font-weight:700;padding:14px 15px 5px;
     }
-    form.profile-form {
-      max-width: 520px;
+    .sidebar-nav a{
+      display:flex;align-items:center;gap:9px;min-height:40px;padding:9px 15px;
+      color:var(--side-text);text-decoration:none;font-size:13.5px;
+      border-left:3px solid transparent;
     }
-    form.inline-form {
-      display: inline;
-      margin: 0;
+    .sidebar-nav a:hover{background:#1a2329;color:#fff}
+    .sidebar-nav a.on{background:var(--side-active);color:#fff;font-weight:600;border-left-color:var(--accent)}
+    .sidebar-nav a.donate{margin-top:6px;color:#f6d5d0}
+    .sidebar-nav form{margin:0}
+    .sidebar-nav button.linkish{
+      display:flex;align-items:center;gap:9px;width:100%;min-height:40px;padding:9px 15px;
+      background:transparent;border:0;border-left:3px solid transparent;cursor:pointer;
+      color:var(--side-text);font:inherit;font-size:13.5px;text-align:left;
     }
-    @media (min-width: 680px) {
-      form.auth-form {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        align-items: end;
-      }
-      form.auth-form .form-actions,
-      form.auth-form input[type="hidden"] {
-        grid-column: 1 / -1;
-      }
+    .sidebar-nav button.linkish:hover{background:#1a2329;color:#fff}
+    .sidebar-foot{margin-top:auto;padding:12px 15px;border-top:1px solid #2b3a40}
+
+    .main{flex:1;min-width:0;display:flex;flex-direction:column;margin-left:var(--side-w)}
+    .topbar{
+      min-height:var(--header-h);background:var(--surface);border-bottom:1px solid var(--border);
+      display:flex;align-items:center;gap:10px;padding:0 15px;position:sticky;top:0;z-index:30;
+    }
+    .burger{
+      display:none;width:34px;height:32px;align-items:center;justify-content:center;
+      background:transparent;border:1px solid var(--border);cursor:pointer;color:var(--ink);font-size:16px;line-height:1;
+    }
+    .topbar-title{font-size:13px;font-weight:600;color:var(--ink);line-height:1.2;flex:1 1 auto;min-width:0;overflow:hidden}
+    .topbar-title small{display:block;font-size:11px;font-weight:400;color:var(--muted)}
+    .topbar .right{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}
+    .content{padding:15px;flex:1;min-width:0}
+
+    /* language picker + pill */
+    .language-picker{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:var(--muted)}
+    .language-picker select{
+      min-height:30px;padding:4px 8px;border:1px solid var(--border);border-radius:0;
+      background:#fff;color:#374151;font:inherit;font-size:12px;
+    }
+    .muted{color:var(--muted)}
+
+    /* ---------- legacy components, restyled ---------- */
+    .panel{
+      background:var(--surface);border:1px solid var(--border);border-top:3px solid var(--accent);
+      border-radius:0;margin-bottom:8px;
+    }
+    .panel.section{padding:14px 16px}
+    .panel.section > h2,.panel > h2{
+      margin:0 0 12px;padding-bottom:9px;border-bottom:1px solid #f0f3f6;
+      font-size:15px;font-weight:600;color:#333;text-align:left;
+    }
+    .panel.section h3{font-size:14px;font-weight:600;margin:18px 0 6px;color:#333}
+    .section{padding:14px 16px}
+
+    .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:12px 16px}
+    .control{display:flex;flex-direction:column;gap:4px;min-width:0}
+    .control label{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+    .control select,.control input,.control textarea{
+      min-height:34px;padding:6px 9px;border:1px solid var(--border);border-radius:0;
+      background:#fff;font:inherit;color:var(--ink);max-width:100%;
+    }
+
+    .button{
+      display:inline-block;border:1px solid var(--accent);border-radius:0;
+      padding:7px 13px;background:var(--accent);color:#fff;text-decoration:none;
+      font:inherit;font-size:13px;font-weight:600;cursor:pointer;
+    }
+    .button:hover{background:var(--accent-hover);border-color:var(--accent-hover);color:#fff}
+    .button.secondary{background:#fff;border-color:var(--border);color:#4a545c}
+    .button.secondary:hover{background:#f4f6f8;border-color:#bfc8d1;color:#333}
+
+    /* stat tiles: the four BrandMeister summary colours */
+    .cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:8px}
+    .cards > *{min-width:0}
+    .cards .stat{
+      position:relative;overflow:hidden;padding:13px 15px;min-height:96px;
+      background:var(--accent);border:0;color:#fff;display:flex;flex-direction:column;justify-content:center;
+    }
+    .cards .stat:nth-child(2){background:var(--ok)}
+    .cards .stat:nth-child(3){background:var(--warn)}
+    .cards .stat:nth-child(4){background:var(--info)}
+    .cards .stat small{display:block;color:#ffffffeb;font-weight:600;font-size:12.5px;text-transform:none;letter-spacing:0}
+    .cards .stat strong{display:block;margin-top:3px;font-size:26px;font-weight:700;line-height:1.1;color:#fff;letter-spacing:-.4px}
+    .cards .stat strong a{color:#fff;text-decoration:underline}
+    .cards .stat .report-trend-value{font-size:22px}
+    .cards .stat .report-trend-periods{color:#ffffffd0}
+
+    .charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:8px}
+    .charts > *{min-width:0}
+
+    .bars{display:flex;flex-direction:column;gap:7px}
+    .bar{display:grid;grid-template-columns:170px 1fr 64px;gap:8px;align-items:center;font-size:13px}
+    .bar label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#4a545c}
+    .track{display:block;height:16px;background:#eef2f5;border:1px solid #e2e8ec;overflow:hidden}
+    .fill{display:block;height:100%;background:var(--accent)}
+    .value{text-align:right;color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums}
+
+    .histogram{display:flex;align-items:flex-end;gap:3px;height:210px;border-bottom:1px solid var(--line);padding:14px 3px 22px}
+    .histogram i{display:block;flex:1;background:var(--accent);min-width:5px;border-radius:0}
+
+    .table-wrap{max-width:100%;overflow:auto}
+    table{width:100%;border-collapse:collapse;background:var(--surface);font-size:13px}
+    th,td{padding:9px 11px;border-bottom:1px solid #f0f3f6;text-align:left;white-space:nowrap;vertical-align:middle}
+    th{
+      background:#fbfcfd;color:#8a949c;font-size:11px;font-weight:700;
+      letter-spacing:.06em;text-transform:uppercase;border-bottom:2px solid #f0f3f6;
+    }
+    tbody tr:hover{background:#f9fbfc}
+
+    .message{
+      padding:11px 14px;background:#fff8ec;border-left:3px solid var(--warn);
+      margin-bottom:10px;color:#7a5b1e;
+    }
+    .message.success{background:#eefaf2;border-left-color:var(--ok);color:#166534}
+    .message.error{background:#fdeeef;border-left-color:var(--accent);color:#9f1239}
+
+    .talkgroup-checkboxes{
+      display:flex;flex-direction:column;gap:1px;max-height:150px;min-width:230px;max-width:100%;
+      overflow-y:auto;padding:5px 9px;border:1px solid var(--border);background:#fff;
+    }
+    .talkgroup-checkboxes label{
+      display:flex;align-items:center;gap:8px;min-height:22px;margin:0;font-size:13px;
+      line-height:1.1;text-transform:none;color:var(--ink);font-weight:400;white-space:nowrap;
+    }
+    .talkgroup-checkboxes input[type="checkbox"]{flex:0 0 auto;width:auto;min-height:0;margin:0;accent-color:var(--accent)}
+
+    /* labeled histogram extras used by the dashboard and reports pages */
+    .histogram{overflow-x:auto;overflow-y:visible}
+    .histogram-column{position:relative;display:flex;flex:1;min-width:10px;height:100%;align-items:flex-end;justify-content:center}
+    .histogram-column i{display:block;width:100%;min-height:0}
+    .labeled-histogram{padding-bottom:48px;padding-right:34px;/* the last rotated label overhangs the right edge; clip it horizontally so
+   it cannot widen the page, while keeping the vertical labels visible */
+   overflow-x:clip;overflow-y:visible}
+    .labeled-histogram .histogram-column small{
+      position:absolute;bottom:-42px;left:50%;width:60px;overflow:visible;
+      transform:translateX(-50%) rotate(-45deg);transform-origin:50% 0;
+      font-size:8px;color:var(--muted);text-align:center;white-space:nowrap;
+    }
+    .histogram-value{position:absolute;top:-16px;font-size:10px;color:var(--muted);line-height:1;white-space:nowrap}
+
+    /* ---------- footer ---------- */
+    .footer{
+      margin-top:14px;padding:12px 2px 4px;border-top:1px solid var(--border);
+      color:var(--muted);font-size:11.5px;
+    }
+    .footer-meta{padding-bottom:8px}
+    .disclaimer{
+      margin:0;padding:9px 12px;background:#fdf6f5;border-left:3px solid var(--accent);
+      color:#6b5b58;font-size:11.5px;line-height:1.6;max-width:110ch;
+    }
+    .disclaimer span{display:inline}
+
+    /* ---------- cookie banner ---------- */
+    .cookie-consent{
+      position:fixed;inset:auto 18px 18px 18px;z-index:20;background:#fff;padding:16px 18px;
+      border:1px solid var(--border);border-top:3px solid var(--accent);
+      box-shadow:0 12px 36px #222d3233;max-width:720px;margin:auto;
+    }
+    .cookie-consent[hidden]{display:none}
+    .cookie-consent h3{margin:0 0 6px;font-size:14px;color:#333}
+    .cookie-consent p{margin:0;font-size:12.5px;color:var(--muted)}
+    .cookie-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+
+    /* ---------- forms ---------- */
+    form.auth-form,form.stacked-form,form.profile-form{display:flex;flex-direction:column;gap:13px;margin-top:14px}
+    .form-field,form.stacked-form p,form.profile-form p{display:flex;flex-direction:column;gap:5px;margin:0}
+    .form-field label,form.stacked-form label,form.profile-form label{font-weight:600;font-size:12.5px;color:#4a545c}
+    .form-field input,form.stacked-form input,form.stacked-form select,form.stacked-form textarea,
+    form.profile-form input,form.profile-form select,form.profile-form textarea{
+      width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:0;background:#fff;font:inherit;
+    }
+    .form-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+    form.profile-form{max-width:520px}
+    form.inline-form{display:inline;margin:0}
+    @media (min-width:680px){
+      form.auth-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end}
+      form.auth-form .form-actions,form.auth-form input[type="hidden"]{grid-column:1/-1}
+    }
+
+    .scrim{display:none}
+
+    /* ---------- responsive ---------- */
+    @media (max-width:1100px){
+      .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .charts{grid-template-columns:1fr}
+    }
+    @media (max-width:900px){
+      .sidebar{transform:translateX(-100%);transition:transform .2s ease}
+      .sidebar.open{transform:none}
+      .main{margin-left:0}
+      .burger{display:inline-flex}
+      .scrim{display:none;position:fixed;inset:0;background:#0000004d;z-index:35}
+      .scrim.on{display:block}
+      .topbar-title{display:flex}
+    }
+    @media (min-width:901px){
+      .topbar-title{display:none}
+    }
+    @media (max-width:620px){
+      .content{padding:10px}
+      /* Keep the shell bar to one compact line: the wordmark is long, so the
+         tagline is dropped and the title is allowed to ellipsis. */
+      .topbar{padding:0 10px;gap:8px}
+      .topbar-title{font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .topbar-title small{display:none}
+      .language-picker select{max-width:92px;padding:3px 5px}
+      .cards{gap:6px}
+      .cards .stat{padding:10px 11px;min-height:82px}
+      .cards .stat small{font-size:11px}
+      .cards .stat strong{font-size:20px}
+      .panel.section{padding:12px 12px}
+      .controls{padding:10px 12px;gap:8px}
+      .bar{grid-template-columns:105px 1fr 52px;font-size:12px}
+      th,td{padding:8px 9px}
+      .talkgroup-checkboxes{min-width:0;width:100%}
+      .donate-button{display:none}
+      .cookie-consent{inset:auto 10px 10px 10px;padding:14px}
     }
   </style>
   {{ labels.metadata|json_script:"metadataTranslations" }}
@@ -83,23 +289,113 @@
   {{ labels.common|json_script:"commonTranslations" }}
 </head>
 <body>
-<main class="shell">
-  <header class="panel hero">
-    <h1>🔊 BrandMeister Lastheard</h1>
-    <p>{{ labels.home.subtitle }}</p>
-    <nav class="nav">
-      <a href="/">{{ labels.common.dashboard|default:'Dashboard' }}</a>
-      <a href="/about/">{{ labels.about.title|default:'About' }}</a>
-      {% if user.is_authenticated %}<a href="/user/live-qsos/">{{ labels.home.liveQsos }}</a><a href="/reports/">{{ labels.home.reports|default:'Reports' }}</a>{% if user.is_staff %}<a href="/administration/">{{ labels.home.admin|default:'Admin' }}</a>{% endif %}<a href="/profile/">{{ user.callsign }}</a><form method="post" action="/logout/" style="display:inline">{% csrf_token %}<button class="button" type="submit">{{ labels.user.logout|default:'Log out' }}</button></form>{% else %}<a href="/login/">{{ labels.home.login|default:'Log in' }}</a><a href="/register/">{{ labels.user.register|default:'Register' }}</a>{% endif %}<div class="header-actions"><label class="language-picker" for="languageSelector">{{ labels.common.language|default:'Language' }}<select id="languageSelector"><option value="en"{% if app_locale == 'en' %} selected{% endif %}>🇬🇧 English</option><option value="es"{% if app_locale == 'es' %} selected{% endif %}>🇪🇸 Español</option><option value="de"{% if app_locale == 'de' %} selected{% endif %}>🇩🇪 Deutsch</option><option value="fr"{% if app_locale == 'fr' %} selected{% endif %}>🇫🇷 Français</option></select></label><a class="button donate-button" href="https://ko-fi.com/ea7klk" target="_blank" rel="noopener noreferrer">{{ labels.donation.donate }}</a></div>
+<div class="shell">
+
+  <aside class="sidebar" id="sidebar">
+    <a class="sidebar-brand" href="/">
+      <img src="{% static 'dashboard/brandmeister-logo.png' %}" alt="BrandMeister logo">
+      <span>{{ labels.common.appName|default:'BrandMeister Statistics by EA7KLK' }}
+        <em>{{ labels.common.siteTagline|default:'LastHeard statistics' }}</em></span>
+    </a>
+
+    {% if user.is_authenticated %}
+    <div class="sidebar-user">
+      <span class="avatar">{{ user.callsign|slice:":2" }}</span>
+      <span class="who"><b>{{ user.callsign }}</b><small>{{ user.name|default:'' }}</small></span>
+    </div>
+    {% endif %}
+
+    <nav class="sidebar-nav">
+      <div class="group">{{ labels.common.navigation|default:'Statistics' }}</div>
+      <a href="/"{% if request.path == '/' %} class="on"{% endif %}>▦ {{ labels.common.home|default:'Dashboard' }}</a>
+      {% if user.is_authenticated %}
+      <a href="/user/live-qsos/"{% if request.path == '/user/live-qsos/' %} class="on"{% endif %}>◉ {{ labels.home.liveQsos|default:'Live QSOs' }}</a>
+      <a href="/reports/"{% if request.path == '/reports/' %} class="on"{% endif %}>▤ {{ labels.home.reports|default:'Reports' }}</a>
+      {% endif %}
+      <a href="/about/"{% if request.path == '/about/' %} class="on"{% endif %}>ⓘ {{ labels.about.title|default:'About' }}</a>
+
+      <div class="group">{{ labels.common.account|default:'Account' }}</div>
+      {% if user.is_authenticated %}
+      <a href="/profile/"{% if request.path == '/profile/' %} class="on"{% endif %}>☺ {{ labels.user.profile|default:'Profile' }}</a>
+      {% if user.is_staff %}<a href="/administration/"{% if request.path == '/administration/' %} class="on"{% endif %}>⛭ {{ labels.home.admin|default:'Administration' }}</a>{% endif %}
+      <form method="post" action="/logout/">{% csrf_token %}<button class="linkish" type="submit">⎋ {{ labels.user.logout|default:'Log out' }}</button></form>
+      {% else %}
+      <a href="/login/"{% if request.path == '/login/' %} class="on"{% endif %}>→ {{ labels.home.login|default:'Log in' }}</a>
+      <a href="/register/"{% if request.path == '/register/' %} class="on"{% endif %}>+ {{ labels.user.register|default:'Register' }}</a>
+      {% endif %}
+      <a class="donate" href="https://ko-fi.com/ea7klk" target="_blank" rel="noopener noreferrer">♡ {{ labels.donation.donate|default:'Donate' }}</a>
     </nav>
-  </header>
-  {% if messages %}{% for message in messages %}<div class="message">{{ message }}</div>{% endfor %}{% endif %}
-  {% block content %}{% endblock %}
-  <footer class="footer" id="queryFooter">{{ labels.common.recordsRetrievedLabel }}: {{ records_retrieved|default:'—' }} · {{ labels.common.queryTimeLabel }}: {{ query_seconds|default:'—' }} s</footer>
-</main>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="burger" id="sidebarToggle" aria-label="Toggle navigation" aria-expanded="false" aria-controls="sidebar">☰</button>
+      <div class="topbar-title">
+        {{ labels.common.appName|default:'BrandMeister Statistics by EA7KLK' }}
+        <small>{{ labels.home.subtitle }}</small>
+      </div>
+      <div class="right">
+        <label class="language-picker" for="languageSelector">
+          <select id="languageSelector" aria-label="{{ labels.common.language|default:'Language' }}">
+            <option value="en"{% if app_locale == 'en' %} selected{% endif %}>🇬🇧 English</option>
+            <option value="es"{% if app_locale == 'es' %} selected{% endif %}>🇪🇸 Español</option>
+            <option value="de"{% if app_locale == 'de' %} selected{% endif %}>🇩🇪 Deutsch</option>
+            <option value="fr"{% if app_locale == 'fr' %} selected{% endif %}>🇫🇷 Français</option>
+          </select>
+        </label>
+        <a class="button donate-button" href="https://ko-fi.com/ea7klk" target="_blank" rel="noopener noreferrer">{{ labels.donation.donate|default:'Donate' }}</a>
+      </div>
+    </header>
+
+    <div class="content">
+      {% if messages %}{% for message in messages %}<div class="message">{{ message }}</div>{% endfor %}{% endif %}
+      {% block content %}{% endblock %}
+
+      <footer class="footer">
+        <div class="footer-meta" id="queryFooter">{{ labels.common.recordsRetrievedLabel }}: {{ records_retrieved|default:'—' }} · {{ labels.common.queryTimeLabel }}: {{ query_seconds|default:'—' }} s</div>
+        <p class="disclaimer">
+          <span>{{ labels.disclaimer.work }}</span>
+          <span>{{ labels.disclaimer.data }}</span>
+          <span>{{ labels.disclaimer.affiliation }}</span>
+          <span>{{ labels.disclaimer.asIs }}</span>
+        </p>
+      </footer>
+    </div>
+  </div>
+</div>
+
 {% include "dashboard/donation_reminder.html" %}
 <div id="cookieConsent" class="cookie-consent" hidden><h3>{{ labels.cookies.title|default:'Privacy and cookies' }}</h3><p>{{ labels.cookies.description|default:'Only necessary cookies are used by default.' }}</p><div class="cookie-actions"><button class="button" onclick="cookieChoice(true)">{{ labels.cookies.acceptAnalytics|default:'Accept analytics' }}</button><button class="button secondary" onclick="cookieChoice(false)">{{ labels.cookies.continue|default:'Continue with necessary cookies' }}</button></div></div>
 {% if matomo_enabled and analytics_consent and matomo_url and matomo_site_id %}<script>var _paq=window._paq=window._paq||[];_paq.push(['trackPageView']);_paq.push(['enableLinkTracking']);(function(){var u='{{ matomo_url }}/';_paq.push(['setTrackerUrl',u+'matomo.php']);_paq.push(['setSiteId','{{ matomo_site_id }}']);var d=document,g=d.createElement('script'),s=d.getElementsByTagName('script')[0];g.async=true;g.src=u+'matomo.js';s.parentNode.insertBefore(g,s)})();</script>{% endif %}
-<script>document.getElementById('languageSelector').addEventListener('change',function(){document.cookie='bm_lang='+encodeURIComponent(this.value)+';path=/;max-age=1296000;SameSite=Lax';const url=new URL(window.location.href);url.searchParams.set('lang',this.value);window.location.href=url.toString()});function cookieChoice(analytics){document.cookie='cookie_consent='+ (analytics?'analytics':'necessary') +';path=/;max-age=31536000;SameSite=Lax';document.getElementById('cookieConsent').hidden=true;if(analytics)location.reload()}if(!document.cookie.split('; ').some(x=>x.startsWith('cookie_consent=')))document.getElementById('cookieConsent').hidden=false;</script>
+<script>
+  document.getElementById('languageSelector').addEventListener('change',function(){
+    document.cookie='bm_lang='+encodeURIComponent(this.value)+';path=/;max-age=1296000;SameSite=Lax';
+    const url=new URL(window.location.href);
+    url.searchParams.set('lang',this.value);
+    window.location.href=url.toString();
+  });
+  function cookieChoice(analytics){
+    document.cookie='cookie_consent='+(analytics?'analytics':'necessary')+';path=/;max-age=31536000;SameSite=Lax';
+    document.getElementById('cookieConsent').hidden=true;
+    if(analytics)location.reload();
+  }
+  if(!document.cookie.split('; ').some(x=>x.startsWith('cookie_consent=')))document.getElementById('cookieConsent').hidden=false;
+
+  (function(){
+    const sidebar=document.getElementById('sidebar');
+    const toggle=document.getElementById('sidebarToggle');
+    const scrim=document.getElementById('scrim');
+    if(!toggle)return;
+    const close=()=>{sidebar.classList.remove('open');scrim.classList.remove('on');toggle.setAttribute('aria-expanded','false')};
+    toggle.addEventListener('click',()=>{
+      const open=sidebar.classList.toggle('open');
+      scrim.classList.toggle('on',open);
+      toggle.setAttribute('aria-expanded',open?'true':'false');
+    });
+    scrim.addEventListener('click',close);
+    document.addEventListener('keydown',e=>{if(e.key==='Escape')close()});
+  })();
+</script>
 </body>
 </html>

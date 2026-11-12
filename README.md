@@ -1,8 +1,11 @@
-# BrandMeister statistics
+# BrandMeister Statistics by EA7KLK
 
 A Django and Channels application that collects the BrandMeister LastHeard
 Socket.IO stream and presents live QSOs, grouped statistics, reports, account
 management, and administrative maintenance tools.
+
+This is an independent project. It is not affiliated with, endorsed by, or
+supported by BrandMeister. See [Branding and disclaimer](#branding-and-disclaimer).
 
 ## Structure
 
@@ -204,6 +207,30 @@ ORDER BY pg_total_relation_size(oid) DESC;
 The six-month estimate assumes the current seven-day activity rate and the
 current raw-event retention policy; sustained traffic growth or a higher raw
 payload volume requires proportional headroom.
+
+## Branding and disclaimer
+
+The interface is an admin-style shell using the colours and layout conventions
+of brandmeister.network (`#dd4b39` accent, `#222d32` sidebar, `#ecf0f5` frame,
+230 px sidebar, 50 px header). The wordmark in the sidebar reads
+**BrandMeister Statistics by EA7KLK**, not "BrandMeister" alone, so the site does
+not present itself as BrandMeister's own service.
+
+Every page ends with a disclaimer stating that the site is the author's own
+work, that the data comes from the BrandMeister LastHeard service, that it is
+not affiliated with or supported by BrandMeister, and that it is provided
+as-is without claims of completeness, accuracy, or fitness for a particular
+purpose. The text is translated into English, Spanish, German and French
+(`disclaimer.*` and `common.appName` in `dashboard/translations.json`), rendered
+from `templates/dashboard/base.html` and the maintenance page.
+
+The BrandMeister logo is used as the favicon and in the sidebar; the image files
+live in `dashboard/static/dashboard/` and are collected with the other static
+assets.
+
+The BrandMeister name and logo belong to BrandMeister. Their use here is
+descriptive, to identify the data source; anyone redeploying this project should
+review that use against BrandMeister's own trademark policy.
 
 ## Main endpoints
 

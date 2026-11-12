@@ -1,12 +1,13 @@
 {% extends "dashboard/base.html" %}
-{% block title %}BrandMeister Lastheard{% endblock %}
+{% block title %}{{ labels.common.appName }}{% endblock %}
 {% block content %}
 {% if not user.is_authenticated %}
 <style>
-  .registration-notice{text-align:center;font-size:clamp(1.125rem,1.6vw,1.35rem);font-weight:750;line-height:1.6;color:#9d174d;border:2px solid #db2777}
+  .registration-notice{text-align:center;font-size:clamp(1.125rem,1.6vw,1.35rem);font-weight:750;line-height:1.6;color:#8a3a2c;border:2px solid #dd4b39;border-left-width:4px}
   .registration-notice a{color:inherit;font-weight:800;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:.2em}
-  .registration-notice a:hover,.registration-notice a:focus-visible{color:#701a75}
-  .registration-notice a:focus-visible{outline:2px solid #701a75;outline-offset:4px;border-radius:2px}
+  .registration-notice a:hover,.registration-notice a:focus-visible{color:#b03a2b}
+  .registration-notice a:focus-visible{outline:2px solid #dd4b39;outline-offset:3px}
+  @media(max-width:620px){.registration-notice{font-size:1rem;line-height:1.45;padding:12px 13px;font-weight:600}}
 </style>
 <aside id="registrationNotice" class="panel section registration-notice"><a href="{% url 'register' %}?lang={{ app_locale }}">{{ labels.home.registeredUsers }}</a> {{ labels.home.registrationNotice }}</aside>
 {% endif %}

@@ -35,6 +35,13 @@ class MockupServingTests(SimpleTestCase):
             with self.subTest(asset=asset):
                 self.assertEqual(self.client.get(f"/mockups/assets/{asset}").status_code, 200)
 
+    def test_every_mockup_carries_the_disclaimer(self):
+        for page in ("spectrum.html", "receiver.html", "bm-classic.html", "bm-rail.html"):
+            with self.subTest(page=page):
+                body = body_of(self.client.get(f"/mockups/{page}"))
+                self.assertIn("mockup-disclaimer", body)
+                self.assertIn("not affiliated with, endorsed by, or supported by BrandMeister", body)
+
     def test_unknown_mockup_is_not_found(self):
         self.assertEqual(self.client.get("/mockups/does-not-exist.html").status_code, 404)
 

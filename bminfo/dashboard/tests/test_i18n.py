@@ -18,10 +18,10 @@ class TranslationTests(SimpleTestCase):
 
     def test_donation_dialog_uses_the_selected_locale_on_shared_pages(self):
         expected = {
-            "en": "Support BrandMeister Lastheard",
-            "es": "Apoya BrandMeister Lastheard",
-            "de": "Unterstütze BrandMeister Lastheard",
-            "fr": "Soutenez BrandMeister Lastheard",
+            "en": "Support BrandMeister Statistics by EA7KLK",
+            "es": "Apoya Estadísticas de BrandMeister por EA7KLK",
+            "de": "Unterstütze BrandMeister-Statistiken von EA7KLK",
+            "fr": "Soutenez Statistiques BrandMeister par EA7KLK",
         }
         for locale, title in expected.items():
             with self.subTest(locale=locale):
@@ -46,7 +46,10 @@ class TranslationTests(SimpleTestCase):
                 request.user = AnonymousUser()
                 labels = catalog(locale)
                 html = render_to_string("dashboard/index.html", request=request)
-                self.assertIn(f'<p>{escape(labels["home"]["subtitle"])}</p>', html)
+                # The subtitle moved from a header <p> into the shell's top bar,
+                # so assert the translated text is rendered rather than pinning
+                # the surrounding markup.
+                self.assertIn(escape(labels["home"]["subtitle"]), html)
                 self.assertIn(f'<label for="timeRange">{escape(labels["home"]["timeRange"])}</label>', html)
                 for key in ("qsoActivityTitle", "talkTimeTitle", "callsignQsoTitle", "callsignTalkTimeTitle", "talkgroupActivityTitle"):
                     self.assertIn(f'<h2>{escape(labels["home"][key])}</h2>', html)
