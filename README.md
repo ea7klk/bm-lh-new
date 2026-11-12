@@ -147,6 +147,9 @@ are:
   administrator settings.
 - `BM_*`, `TALKGROUPS_*`, and QSO thresholds for BrandMeister ingestion.
 - `SMTP_*` for registration, verification, and password-reset email.
+- `S3_*` and `RAW_ARCHIVE_*` for archiving raw events to Silo. Archiving stays
+  idle until the endpoint, bucket and both keys are set; see
+  [OBJECT-STORAGE.md](OBJECT-STORAGE.md).
 - `UNVERIFIED_USER_RETENTION_DAYS` for deleting accounts that never verified
   their email (default 5).
 - `MATOMO_*` for optional consent-gated analytics.
@@ -200,6 +203,13 @@ to the threshold are retained. Local talkgroup 9 is excluded by default.
 Decoded events are retained for auditing according to
 `RAW_EVENT_KERCHUNK_THRESHOLD_SECONDS`. QSO writes remain idempotent by session
 ID so reconnects and duplicate deliveries do not duplicate transmissions.
+
+Raw events older than **today 00:00 UTC** are compressed one file per UTC day and
+moved to the Silo bucket `bminfo-raw`, then deleted from PostgreSQL. At least one
+full day therefore always stays in the table, and the bucket expires objects after
+365 days. `qsos` can be regenerated from the table plus the archive at any time.
+See [OBJECT-STORAGE.md](OBJECT-STORAGE.md) for the layout, the bucket policy and
+the access-key procedure.
 
 The live-QSO stream polls `qsos` for the last three minutes, newest first,
 once per second per connected viewer. Migration `0006` adds
@@ -301,7 +311,8 @@ review that use against BrandMeister's own trademark policy.
 - `/reports/` authenticated reports and CSV/XLSX/PDF exports
 - `/profile/` account profile and statistics
 - `/admin/` Django administration
-- `/administration/` maintenance and data-quality tools
+- `/administration/` maintenance and data-quality tools, including the
+  raw-event archive panel and the QSO rebuild
 - `/health/` liveness endpoint
 - `/status/` database and collector status
 - `/api/dashboard/` dashboard data

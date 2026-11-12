@@ -49,8 +49,9 @@ document** — every finding below is recorded, not applied.
   materialised query, migration `0007` adds a covering index for it, and its
   `work_mem` is now raised per transaction. See "Single-pass dashboard query"
   and "Covering index and work_mem".
-- Assessed whether `raw_events` belongs in PostgreSQL at all, and whether
-  partitioning it is still worth doing; see "raw_events retention".
+- Assessed whether `raw_events` belongs in PostgreSQL at all; that assessment was
+  then implemented as day-per-object archiving to Silo (`OBJECT-STORAGE.md`),
+  which also settles the partitioning question in "raw_events retention".
 
 Every index and query change above was measured on a production-density copy
 before deploying, then confirmed against production afterwards: `qsos_stop_idx`
@@ -231,7 +232,7 @@ deployment a second replica so a single saturated pod cannot remove the service.
 dashboard requests/second, the application 1.5, and a 20–30 s cache moves the
 endpoint to the network ceiling because a payload serialises in 0.2 ms.
 
-### H3. "Rebuild QSOs" silently destroys every QSO whose raw event was pruned — OPEN, irreversible
+### H3. "Rebuild QSOs" silently destroys every QSO whose raw event was pruned — FIXED
 
 **Files:** `bminfo/dashboard/admin_views.py:109-129` (`rebuild_qsos`),
 `admin_views.py:152-158` (`clear_raw_events`), `templates/admin/maintenance.html:7-9`
@@ -246,7 +247,9 @@ QSO.objects.all().delete()
 
 It then re-creates QSOs by iterating `RawEvent` rows. Any QSO whose raw event no
 longer exists — because an operator used the *other* button on the same page,
-"Delete raw events older than N month(s)" — is simply never re-created.
+"Delete raw events older than N month(s)" — is simply never re-created. Those
+buttons were removed in v1.2.16, so the two actions can no longer be combined;
+the rebuild itself was also rewritten to stop deleting first.
 
 **Reproduction.** On a scratch database: one QSO with a surviving raw event, one
 QSO whose raw event had been pruned, then POST to `/administration/rebuild-qsos/`.
@@ -276,12 +279,22 @@ back, so a killed rebuild is not itself destructive — but each attempt holds a
 multi-hundred-megabyte transaction open for two minutes, which delays vacuum and
 bloats the tables, and the operator is told nothing.
 
-**Fix (not applied).** Rebuild must never delete rows it cannot regenerate:
-delete only QSOs whose `session_id` has a raw event, or better, build into a
-temporary table and swap. The retention and rebuild buttons should not sit next
-to each other without a stated ordering requirement. For this data size the
-rebuild belongs in a management command run from a job, with `--dry-run` and
-batching, not in a request.
+**Fix (implemented in v1.2.16, with the archiving work).** The rebuild no longer
+empties the table. It upserts by `session_id`, so:
+
+- a QSO whose raw event is unreadable is left alone rather than destroyed;
+- a rebuild that stops early leaves a usable table instead of a half-filled one;
+- the raw events now come from PostgreSQL *and* the object-storage archive, so
+  history that was previously deleted is available again.
+
+It also moved out of the request path: `manage.py rebuild_qsos` and the admin
+button both run it in a background thread, with `--days` and `--database-only` to
+bound a spot check. See `OBJECT-STORAGE.md`.
+
+**Residual.** The rebuild still cannot recreate a QSO whose raw event exists
+nowhere — neither in the table nor in an archived day. With archiving in place
+that requires deleting an object from the bucket, so it is a deliberate act
+rather than a side effect of a retention button.
 
 ### H4. The unverified-account purge deletes accounts that staff deliberately disabled — OPEN
 
@@ -520,11 +533,11 @@ does not scale linearly — a shared poller publishing to a channel layer, or
 
 ## Medium
 
-### M1. The maintenance page performs a 91-second table scan on every visit, and one admin action cannot fit in memory — OPEN
+### M1. The maintenance page performs a 91-second table scan on every visit — PARTIALLY FIXED
 
-**Files:** `bminfo/dashboard/admin_views.py:18-79` (`_maintenance_stats`),
-`templates/admin/maintenance.html:14` (auto-fetch on load),
-`admin_views.py:135-145` (`clear_irrelevant_raw_events`),
+**Files (as found):** `bminfo/dashboard/admin_views.py:18-79`
+(`_maintenance_stats`), `templates/admin/maintenance.html:14` (auto-fetch on
+load), `admin_views.py:135-145` (`clear_irrelevant_raw_events`),
 `admin_views.py:154-158` (`clear_raw_events`)
 
 `/administration/` renders, then immediately fetches
@@ -541,25 +554,27 @@ timeout of 120 s (`entrypoint.sh:31`) and three total workers. Two staff members
 opening the page at once occupy two of them. The result is not cached and is not
 needed for the page to render; the metrics panel could load on demand.
 
-Two further admin actions are sized for a dataset this deployment has not had
+Two further admin actions were sized for a dataset this deployment has not had
 for months:
 
-- `clear_irrelevant_raw_events` iterates all raw events building `candidates`
+- `clear_irrelevant_raw_events` iterated all raw events building `candidates`
   (a list of PKs) and `seen` (a set of `(session_id, event_type)` tuples). At
   12.8M rows that is roughly 1 GB of live Python objects in a container whose
-  memory *request* is 64 MiB and whose limit is unset — an OOM kill is the
+  memory *request* is 64 MiB and whose limit is unset — an OOM kill was the
   likely outcome, in a worker the readiness probe also depends on.
-- `clear_raw_events` materialises every matching PK into a list and passes them
-  back in one `id__in=[...]` delete. At the 1-month retention that is millions
-  of IDs in a single SQL statement.
+- `clear_raw_events` materialised every matching PK into a list and passed them
+  back in one `id__in=[...]` delete.
 
-**Fix (not applied).** Move all three to management commands run as Jobs
-(the CronJob pattern already exists), batch deletes, and replace the ad-hoc
-metrics query with a materialised view refreshed on a schedule, or compute the
-page's metrics from `pg_stat_user_tables` estimates plus a bounded sample.
-"Scalability" adds the measured cost of the retention path: deleting 1M rows
-costs 1.28 s plus 4.32 s of `VACUUM`, against 147 ms to drop an equivalent
-partition.
+**Both of those actions are gone (v1.2.16).** Raw events are no longer deleted by
+age from the admin page: they are archived a day at a time by the background job,
+which deletes in batches of 5,000 inside short transactions. That removes the
+memory hazard entirely rather than resizing it.
+
+**Still open: the page-view cost.** The 91-second `/administration/data-quality/`
+scan remains. It is now closer to tractable — `raw_events` shrinks to one or two
+days once archiving runs — but the fix is the same: compute the metrics on a
+schedule and store them, or read `pg_stat_user_tables` estimates with a bounded
+sample, instead of materialising the whole table on every visit.
 
 ### M2. No throttling on authentication, registration, or mail; registration is an unauthenticated mail sender — OPEN
 
@@ -1049,11 +1064,10 @@ Each entry states what was measured, not what is hoped for.
    transaction. Measured on the whole dashboard query rather than the summary
    aggregate alone: **12.7%** (1,764 → 1,540 ms). Together with the covering
    index, **19.6%** (1,764 → 1,418 ms). See "Covering index and work_mem".
-6. **Partition `raw_events` by month — retention becomes O(1).** Still the right
-   mechanism *if* retention is adopted, but it is **not worth doing yet**: see
-   "raw_events retention" below, which finds the table is 81% of the database
-   and has never been pruned, and recommends a batched delete first and
-   partitioning only once the table is much smaller.
+6. ~~**Partition `raw_events` by month — retention becomes O(1)**~~ — **not
+   needed; superseded by archiving.** The archiver deletes one day (~130k rows)
+   at a time, which costs a fraction of a second, so partitioning would optimise
+   nothing. See "raw_events retention".
 7. **PgBouncer in transaction mode, or a shorter `CONN_MAX_AGE`.** Not a speed
    fix; it removes the connection ceiling described above, so worker count,
    collector, pgAdmin and CronJobs stop competing for 120 slots, and it stops
@@ -1064,11 +1078,13 @@ Each entry states what was measured, not what is hoped for.
    transformative, and `COUNT(DISTINCT)` is not additive across buckets, so
    rollups answer "unique callsigns in this range" only approximately (or need
    an HLL extension). Worth doing after 1–3 and only if 3 is insufficient.
-9. **Move `raw_events` payloads out of PostgreSQL — up to 80% smaller database.**
-   21 of the 26 GB is an append-only JSONB audit trail that is never queried by
-   field. Writing Parquet objects to storage, or a columnar table, removes the
-   dominant share of backup time, `VACUUM` cost and disk growth while keeping
-   PostgreSQL for everything that is queried.
+9. ~~**Move `raw_events` payloads out of PostgreSQL**~~ — **done in v1.2.16**, as
+   gzipped JSONL rather than Parquet: one object per UTC day in the Silo bucket
+   `bminfo-raw`, with a 365-day lifecycle, and the table pruned to one day. JSONL
+   was chosen over Parquet because the only reader is the QSO rebuild, which
+   streams lines; a columnar format would add a dependency for no query the
+   application makes. 21 of the 26 GB leaves PostgreSQL; see
+   "raw_events retention" and `OBJECT-STORAGE.md`.
 10. **Channels channel layer for live updates.** Once the `stop_at` index makes
     each poll cheap (0.14 ms), one query per second per viewer is sustainable to
     a few hundred users. Beyond that, the correct shape is one shared poller
@@ -1237,7 +1253,7 @@ plan still says "Index Only Scan".
 | covering index + 64 MB `work_mem`, stale VM | 1.69–1.94 s |
 | after `VACUUM` and autovacuum tuning | **1.22–1.31 s** |
 
-### raw_events retention (assessment, no change made)
+### raw_events retention (assessment, archiving implemented in v1.2.16)
 
 `raw_events` holds every decoded LastHeard event. It is written by the collector
 and read by nothing on the request path. The question was whether it belongs in
@@ -1274,9 +1290,10 @@ unique btree on the same column serves the equality lookups. **Dropping it
 reclaims 1.6 GB with no query affected**, and the same reasoning applies to
 `qsos_session_id_450b4bad_like` (278 MB) on `qsos`.
 
-**Who reads it.** Only administrative tools: `rebuild_qsos` (reconstruct the QSO
-table from raw events), `clear_irrelevant_raw_events`, the retention counters and
-`_maintenance_stats`. No dashboard, report, profile or API query touches it.
+**Who reads it.** Only administrative paths: `rebuild_qsos` (reconstruct the QSO
+table from raw events, now also from the archive) and `_maintenance_stats`. The
+two age-based deletion tools (`clear_irrelevant_raw_events`, `clear_raw_events`)
+were removed in v1.2.16. No dashboard, report, profile or API query touches it.
 `AGENTS.md` lists raw-event retention as a data invariant, so it is an audit
 trail by design rather than an incidental table.
 
@@ -1310,26 +1327,43 @@ it does not need to be *all* in PostgreSQL, indefinitely:
    and 130k rows/day is far below the point where operating a second database
    pays for itself. Revisit if the payload outgrows the row data.
 
-**Is partitioning (item 6) still needed?** Not yet, and the order matters.
+**What was implemented (v1.2.16).** Option 1 followed by option 3, in the
+smaller form that suits this workload:
 
-Partitioning earns its keep by making retention a metadata operation: measured
-earlier, deleting a million rows costs 1.28 s plus 4.32 s of `VACUUM`, while
-dropping an equivalent partition takes 147 ms. At 13M rows the current delete
-plus index maintenance would run for minutes and leave the table bloated.
+- Raw events older than today 00:00 UTC are compressed one file per UTC day into
+  `bminfo-raw/raw-events/YYYY/MM/DD.jsonl.gz`, verified by re-download, and then
+  deleted from the table in batches.
+- The bucket expires objects after 365 days, so the archive is bounded without
+  any code running.
+- Admin deletion by age was removed, because deleting a month of raw events is no
+  longer safe once earlier months live only in the bucket.
+- The QSO rebuild now reads the table and then the newest archived days, and no
+  longer empties the table first (H3).
 
-But partitioning now would mean rewriting 21 GB into a partitioned table — a
-large, disruptive migration — to solve a problem that only exists once retention
-runs. The cheaper sequence is:
+`OBJECT-STORAGE.md` holds the layout, the exact bucket policy for the `bminfo`
+user, and the `mcli` commands for creating and rotating its keys.
 
-1. Add a batched retention delete and actually enable it, which drains 9M rows
-   and shrinks the table to roughly a third.
-2. Partition what remains, which is then a far smaller migration.
-3. After that, retention becomes `DETACH`/`DROP` and the maintenance queries in
-   M1 become per-partition instead of whole-table.
+**Is partitioning (item 6) still needed? No — archiving supersedes it.** The case
+for partitioning was that deleting a month of rows is expensive (measured: 1.28 s
+plus 4.32 s of `VACUUM` for a million rows) while dropping a partition is
+metadata. But the archiver now deletes **one day at a time**, about 130,000 rows:
 
-If the table is instead moved to object storage (option 3 above), partitioning
-becomes moot. **So item 6 stays open, gated on the retention decision, and should
-not be started before it.**
+- ~0.17 s of delete per day, scaled from that measurement, plus vacuum;
+- the table never exceeds one or two days, so its indexes stay small and the
+  91-second maintenance scan (M1) becomes tractable on its own;
+- and space is reused by new inserts regardless, which is what bounds growth.
+
+Partitioning would mean rewriting 21 GB into a partitioned table to optimise an
+operation that now costs a fraction of a second per day. It would only come back
+into play if ingest grew by orders of magnitude, or if deletion-by-day ever became
+the bottleneck — neither is close.
+
+**Still open from this assessment:** the redundant `varchar_pattern_ops` indexes
+(1.6 GB on `raw_events`, 278 MB on `qsos`) have not been dropped. That is a
+separate, reversible schema change and needs its own deploy; with `raw_events`
+now being pruned it is less urgent, though still free space. Object storage
+replaces the "keep everything in PostgreSQL" model rather than the columnar-store
+option, which remains unwarranted at this size.
 
 ### Would moving to a non-relational database help?
 
@@ -1413,7 +1447,7 @@ reversible, and keeps the ORM's transactional guarantees where they matter.
 
 | Tier | Trigger | Changes |
 | --- | --- | --- |
-| **Now** (12 accounts, 25 target) | — | ~~`stop_at` index (H5)~~ — v1.2.6; ~~single-pass dashboard query~~ — v1.2.13; ~~covering index, per-transaction `work_mem` and `qsos` autovacuum tuning~~ — v1.2.14. Remaining: 20–30 s response cache. Keep 3 workers. Monitor that `qsos` is being autovacuumed at its new 2% threshold. |
+| **Now** (12 accounts, 25 target) | — | ~~`stop_at` index (H5)~~ — v1.2.6; ~~single-pass dashboard query~~ — v1.2.13; ~~covering index, per-transaction `work_mem` and `qsos` autovacuum tuning~~ — v1.2.14; ~~raw-event archiving to Silo~~ — v1.2.16. Remaining: 20–30 s response cache. Keep 3 workers. Monitor that `qsos` is still autovacuumed at its 2% threshold. |
 | **~100–500 concurrent readers** | sustained >5 req/s on the dashboard, or probe flaps | Add PgBouncer, then 4–6 workers; partition `raw_events`; move the admin maintenance work to Jobs (M1); put a read replica behind the analytics endpoints. |
 | **~1,000+ concurrent, or 10× ingest** | write latency or query times growing without a code change | Timescale continuous aggregates (or ClickHouse fed by the collector) for analytics; Redis channel layer for live updates; move `raw_events` to object storage. Keep PostgreSQL for identity, tokens and ingestion. |
 | **Any tier** | — | Do not raise `APP_WORKERS` past ~6 without PgBouncer. Measured: no throughput gain, worse latency, and a hard connection ceiling. |
@@ -1540,14 +1574,13 @@ Traced and found sound, so the scope of the "clean" claim is honest.
    container with limits and a NetworkPolicy.
 8. **M8 + L2 + L9 — the account-flow edges.** A resend endpoint removes the
    three-day dead zone and makes the enumeration trade-off a conscious one.
-9. ~~**Single-pass dashboard query**~~, ~~**covering index**~~ and ~~**per-request
-   `work_mem`**~~ — **done** (v1.2.13 and v1.2.14; see their sections, including
-   the correction to the index's proposed column list). Remaining scalability
-   work, in order: **enable `raw_events` retention** (the batched delete
-   described in "raw_events retention"), drop the redundant pattern-ops indexes,
-   add a 20–30 s response cache, and add PgBouncer before touching
-   `APP_WORKERS`. Partitioning `raw_events` comes after retention has shrunk the
-   table, not before.
+9. ~~**Single-pass dashboard query**~~, ~~**covering index**~~,
+   ~~**per-request `work_mem`**~~ and ~~**`raw_events` retention**~~ — **done**
+   (v1.2.13, v1.2.14 and v1.2.16; see their sections, including the correction to
+   the index's proposed column list and the archiving design in
+   `OBJECT-STORAGE.md`). Remaining scalability work, in order: drop the redundant
+   pattern-ops indexes, add a 20–30 s response cache, and add PgBouncer before
+   touching `APP_WORKERS`.
 10. **L1, L3, L4, L6, L7 — close out** as their own small changes.
 
 ## Limits

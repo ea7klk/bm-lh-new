@@ -4,6 +4,7 @@ import threading
 
 from django.core.management.base import BaseCommand
 
+from dashboard.archiver import archive_loop
 from dashboard.collector import heartbeat_loop, run_collector, talkgroup_loop
 from dashboard.maintenance import nightly_cleanup
 
@@ -25,9 +26,13 @@ class Command(BaseCommand):
         heartbeat = threading.Thread(target=heartbeat_loop, args=(stop_event, connected_event), daemon=True)
         talkgroups = threading.Thread(target=talkgroup_loop, args=(stop_event,), daemon=True)
         cleanup = threading.Thread(target=nightly_cleanup, args=(stop_event,), daemon=True)
+        # Archives raw events older than today 00:00 UTC to object storage and
+        # prunes them from the table. Idle unless storage is configured.
+        archiver = threading.Thread(target=archive_loop, args=(stop_event,), daemon=True)
         heartbeat.start()
         talkgroups.start()
         cleanup.start()
+        archiver.start()
         try:
             run_collector(stop_event, connected_event)
         finally:
@@ -35,3 +40,4 @@ class Command(BaseCommand):
             heartbeat.join(timeout=3)
             talkgroups.join(timeout=3)
             cleanup.join(timeout=3)
+            archiver.join(timeout=10)

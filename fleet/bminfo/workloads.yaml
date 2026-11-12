@@ -329,6 +329,12 @@
                 "secretRef": {
                   "name": "web-env"
                 }
+              },
+              {
+                "secretRef": {
+                  "name": "bminfo-object-store",
+                  "optional": true
+                }
               }
             ],
             "image": "ghcr.io/ea7klk/bminfo-new:v1.2.15@sha256:d4ea494d9054914ee5de59a51f649fba34ce65a005fb2fdb61da9490bbdf33d6",

@@ -2,17 +2,19 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
-from django.db import connection, transaction
-from django.db.models import Count, Max, Q
+from django.db import connection
+from django.db.models import Sum
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
-from .models import QSO, RawEvent, ServiceHeartbeat, Talkgroup, User, UserSession
-from .qso_rules import NON_QSO_DESTINATION_IDS, raw_event_threshold_seconds
+from . import jobs
+from .models import QSO, MaintenanceRun, RawEvent, RawEventArchive, ServiceHeartbeat, User, UserSession
+from .qso_rules import raw_event_threshold_seconds
 
 
 def _maintenance_stats():
@@ -81,7 +83,13 @@ def _maintenance_stats():
 
 @staff_member_required
 def maintenance(request):
-    return render(request, "admin/maintenance.html", {"quality": {}, "users": User.objects.only("id", "callsign", "email", "is_active").order_by("callsign")})
+    return render(request, "admin/maintenance.html", {
+        "quality": {},
+        "users": User.objects.only("id", "callsign", "email", "is_active").order_by("callsign"),
+        "archive_job": jobs.last_run(MaintenanceRun.ARCHIVE),
+        "rebuild_job": jobs.last_run(MaintenanceRun.REBUILD),
+        "archived_days": RawEventArchive.objects.count(),
+    })
 
 
 @staff_member_required
@@ -107,42 +115,85 @@ def update_talkgroups(request):
 @staff_member_required
 @require_http_methods(["POST"])
 def rebuild_qsos(request):
-    threshold = float(__import__("os").getenv("KERCHUNK_THRESHOLD_SECONDS", "3")); exclude = int(__import__("os").getenv("EXCLUDE_LOCAL_TALKGROUP", "9")); rebuilt = 0
-    with transaction.atomic():
-        QSO.objects.all().delete()
-        for raw in RawEvent.objects.filter(event_type__iexact="session-stop").iterator(chunk_size=2000):
-            payload = raw.payload or {}
-            def value(*names):
-                for name in names:
-                    if payload.get(name) not in (None, ""): return payload[name]
-                return None
-            destination = value("DestinationID", "destination_id")
-            try: destination = int(destination) if destination is not None else None
-            except (TypeError, ValueError): destination = None
-            if not raw.start_at or not raw.stop_at or (raw.stop_at - raw.start_at).total_seconds() < threshold or destination is None or destination in NON_QSO_DESTINATION_IDS or destination == exclude or destination > 999999: continue
-            tg = Talkgroup.objects.filter(talkgroup_id=destination).first(); destination_name = value("DestinationName", "destination_name") or (tg.name if tg else None)
-            if not destination_name: continue
-            if tg is None: tg = Talkgroup.objects.create(talkgroup_id=destination, name=str(destination_name))
-            QSO.objects.update_or_create(session_id=raw.session_id, defaults={"source_id": value("SourceID", "source_id"), "source_call": value("SourceCall", "source_call"), "source_name": value("SourceName", "source_name"), "talkgroup_id": destination, "destination_call": value("DestinationCall", "destination_call"), "destination_name": destination_name, "context_id": value("ContextID", "context_id"), "link_call": value("LinkCall", "link_call"), "link_name": value("LinkName", "link_name"), "link_type_name": value("LinkTypeName", "link_type_name"), "slot": value("Slot", "slot"), "master": value("Master", "master"), "talker_alias": value("TalkerAlias", "talker_alias"), "rssi": value("RSSI", "rssi"), "ber": value("BER", "ber"), "start_at": raw.start_at, "stop_at": raw.stop_at, "duration_ms": round((raw.stop_at - raw.start_at).total_seconds() * 1000), "payload": payload})
-            rebuilt += 1
-    messages.success(request, f"Rebuilt {rebuilt} QSOs from raw events.")
+    """Start a QSO rebuild from the table plus the archive, in the background."""
+    run, reason = jobs.start_job(
+        MaintenanceRun.REBUILD,
+        jobs.rebuild_job,
+        include_archive=request.POST.get("include_archive", "1") == "1",
+    )
+    if run is None:
+        messages.error(request, f"Rebuild not started: {reason}.")
+    else:
+        messages.success(
+            request,
+            "QSO rebuild started in the background. It reads the raw events still in the "
+            "database first, then the newest archive files. Progress appears below.",
+        )
     return redirect("admin-maintenance")
 
 
 @staff_member_required
 @require_http_methods(["POST"])
-def clear_irrelevant_raw_events(request):
-    threshold = raw_event_threshold_seconds(); candidates = []; seen = set()
-    for raw in RawEvent.objects.order_by("session_id", "event_type", "-received_at").iterator(chunk_size=2000):
-        key = (raw.session_id, raw.event_type.lower()); duplicate = key in seen; seen.add(key)
-        below = raw.start_at and raw.stop_at and (raw.stop_at - raw.start_at).total_seconds() < threshold
-        if raw.event_type.lower() != "session-stop" or below or duplicate:
-            candidates.append(raw.pk)
-    deleted, _ = RawEvent.objects.filter(pk__in=candidates).delete()
-    with connection.cursor() as cursor:
-        cursor.execute("VACUUM (ANALYZE, PARALLEL 0) raw_events")
-    messages.success(request, f"Deleted {deleted} irrelevant raw events and compacted the table.")
+def archive_now(request):
+    """Start an archive pass for every day older than today 00:00 UTC."""
+    run, reason = jobs.start_job(MaintenanceRun.ARCHIVE, jobs.archive_job)
+    if run is None:
+        messages.error(request, f"Archive not started: {reason}.")
+    else:
+        messages.success(request, "Archiving started in the background, oldest day first.")
     return redirect("admin-maintenance")
+
+
+@staff_member_required
+def archive_status(request):
+    """JSON: what is pending, what is archived, and the state of both jobs."""
+    from .archiver import archive_cutoff, pending_days
+    from .object_store import configuration_problem
+
+    cutoff = archive_cutoff()
+    pending = pending_days()
+    pending_rows = RawEvent.objects.filter(received_at__lt=cutoff).count()
+    archives = list(RawEventArchive.objects.order_by("-day")[:30])
+    newest = archives[0] if archives else None
+    total = RawEventArchive.objects.aggregate(rows=Sum("rows"), bytes=Sum("bytes_compressed"))
+
+    def run_state(kind):
+        run = jobs.last_run(kind)
+        if run is None:
+            return None
+        return {
+            "status": run.status,
+            "message": run.message,
+            "started_at": run.started_at.isoformat(),
+            "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+            "detail": run.detail,
+            "active": jobs.active_run(kind) is not None,
+        }
+
+    return JsonResponse({
+        "storage": {
+            "configured": configuration_problem() is None,
+            "problem": configuration_problem(),
+            "bucket": settings.S3_BUCKET,
+            "endpoint": settings.S3_ENDPOINT_URL,
+            "prefix": settings.RAW_ARCHIVE_PREFIX,
+        },
+        "cutoff": cutoff.isoformat(),
+        "pending_days": len(pending),
+        "pending_rows": pending_rows,
+        "oldest_pending": pending[0].isoformat() if pending else None,
+        "archived_days": RawEventArchive.objects.count(),
+        "archived_rows": total["rows"] or 0,
+        "archived_bytes": total["bytes"] or 0,
+        "newest_archived": newest.day.isoformat() if newest else None,
+        "recent": [
+            {"day": a.day.isoformat(), "rows": a.rows, "bytes": a.bytes_compressed,
+             "key": a.object_key, "archived_at": a.archived_at.isoformat()}
+            for a in archives[:10]
+        ],
+        "archive_job": run_state(MaintenanceRun.ARCHIVE),
+        "rebuild_job": run_state(MaintenanceRun.REBUILD),
+    })
 
 
 def _retention_cutoff(months):
@@ -150,21 +201,14 @@ def _retention_cutoff(months):
 
 
 @staff_member_required
-@require_http_methods(["POST"])
-def clear_raw_events(request, months):
-    if months not in {1, 2, 3, 6}: return JsonResponse({"error": "unsupported retention period"}, status=400)
-    cutoff = _retention_cutoff(months); raw_ids = list(RawEvent.objects.filter(received_at__lt=cutoff).values_list("id", flat=True)); deleted, _ = RawEvent.objects.filter(id__in=raw_ids).delete()
-    with connection.cursor() as cursor: cursor.execute("VACUUM (ANALYZE, PARALLEL 0) raw_events")
-    messages.success(request, f"Deleted {deleted} raw events. QSOs were left unchanged because raw events are independent."); return redirect("admin-maintenance")
-
-
-@staff_member_required
 def retention_counts(request, kind, months):
-    if months not in {1, 2, 3, 6} or kind not in {"raw-events", "qsos"}:
+    # Raw events are no longer deleted by age: they are archived to object
+    # storage and then removed a day at a time. Only QSO retention remains a
+    # manual action, so any other kind is rejected.
+    if months not in {1, 2, 3, 6} or kind != "qsos":
         return JsonResponse({"error": "unsupported retention period"}, status=400)
     cutoff = _retention_cutoff(months)
-    count = RawEvent.objects.filter(received_at__lt=cutoff).count() if kind == "raw-events" else QSO.objects.filter(start_at__lt=cutoff).count()
-    return JsonResponse({"kind": kind, "months": months, "count": count})
+    return JsonResponse({"kind": kind, "months": months, "count": QSO.objects.filter(start_at__lt=cutoff).count()})
 
 
 @staff_member_required

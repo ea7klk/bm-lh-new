@@ -123,6 +123,21 @@ PASSWORD_RESET_HOURS = int(os.getenv("PASSWORD_RESET_HOURS", "1"))
 # count(DISTINCT) sorts spill about 10 MB each at the 8 MB default.
 # Set to an empty string to inherit the server setting.
 DASHBOARD_WORK_MEM = os.getenv("DASHBOARD_WORK_MEM", "64MB")
+
+# Raw-event archiving to the Silo object store (S3-compatible).
+# Archiving only runs when an endpoint, bucket and both keys are present; the
+# collector logs why it is idle otherwise. See OBJECT-STORAGE.md.
+S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "").rstrip("/")
+S3_BUCKET = os.getenv("S3_BUCKET", "bminfo-raw")
+S3_ACCESS_KEY_ID = os.getenv("S3_ACCESS_KEY_ID", "")
+S3_SECRET_ACCESS_KEY = os.getenv("S3_SECRET_ACCESS_KEY", "")
+S3_REGION = os.getenv("S3_REGION", "us-east-1")
+S3_ADDRESSING_STYLE = os.getenv("S3_ADDRESSING_STYLE", "path")
+RAW_ARCHIVE_PREFIX = os.getenv("RAW_ARCHIVE_PREFIX", "raw-events").strip("/")
+# How often the background loop looks for archivable days.
+RAW_ARCHIVE_INTERVAL_SECONDS = int(os.getenv("RAW_ARCHIVE_INTERVAL_SECONDS", "3600"))
+# Set to false to keep archiving manual (the admin button and command still work).
+RAW_ARCHIVE_ENABLED = env_bool("RAW_ARCHIVE_ENABLED", True)
 MATOMO_ENABLED = env_bool("MATOMO_ENABLED", False)
 MATOMO_URL = os.getenv("MATOMO_URL", "")
 MATOMO_SITE_ID = os.getenv("MATOMO_SITE_ID", "")

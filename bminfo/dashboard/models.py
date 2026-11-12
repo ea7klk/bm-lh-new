@@ -195,3 +195,58 @@ class EmailChangeRequest(models.Model):
 
     class Meta:
         db_table = "email_change_requests"
+
+
+class RawEventArchive(models.Model):
+    """Record of one UTC day of raw events moved to object storage.
+
+    Rows are only deleted from `raw_events` after the object is uploaded and
+    verified, so this row is the authoritative statement that a day now lives
+    only in the archive. The archiver consults it to stay idempotent.
+    """
+
+    day = models.DateField(unique=True, help_text="UTC day covered by the archive file")
+    object_key = models.CharField(max_length=512)
+    rows = models.BigIntegerField(default=0)
+    bytes_compressed = models.BigIntegerField(default=0)
+    sha256 = models.CharField(max_length=64, default="")
+    archived_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "raw_event_archives"
+        ordering = ["-day"]
+
+    def __str__(self):
+        return f"{self.day} ({self.rows} rows)"
+
+
+class MaintenanceRun(models.Model):
+    """Status of a long-running maintenance job started from the admin page.
+
+    The jobs run in worker threads so an admin POST returns immediately; this
+    row is how the page reports what happened, and it survives a restart.
+    """
+
+    ARCHIVE = "archive"
+    REBUILD = "rebuild"
+    KIND_CHOICES = [(ARCHIVE, "Archive raw events"), (REBUILD, "Rebuild QSOs")]
+
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    STATUS_CHOICES = [(RUNNING, "Running"), (SUCCEEDED, "Succeeded"), (FAILED, "Failed")]
+
+    kind = models.CharField(max_length=16, choices=KIND_CHOICES)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=RUNNING)
+    started_at = models.DateTimeField(default=timezone.now)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    message = models.TextField(blank=True, default="")
+    detail = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = "maintenance_runs"
+        ordering = ["-started_at"]
+        indexes = [models.Index(fields=["kind", "-started_at"], name="maint_runs_kind_idx")]
+
+    def __str__(self):
+        return f"{self.kind} {self.status} {self.started_at:%Y-%m-%d %H:%M}"
