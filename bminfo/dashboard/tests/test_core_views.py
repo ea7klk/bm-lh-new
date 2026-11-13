@@ -40,7 +40,6 @@ class DashboardDatabaseViewTests(TestCase):
             start_at=start_at,
             stop_at=start_at + timedelta(milliseconds=duration_ms),
             duration_ms=duration_ms,
-            payload={"SessionID": session_id},
         )
 
     def test_dashboard_api_aggregates_qsos_and_excludes_unknown_callsign(self):

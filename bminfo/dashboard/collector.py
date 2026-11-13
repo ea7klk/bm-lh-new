@@ -279,7 +279,6 @@ def store_event(payload, threshold, exclude_talkgroup, raw_threshold=None) -> St
                 stop_at=values["stop_at"],
                 duration_ms=duration_ms,
                 is_native_session_id=values["is_native"],
-                payload=payload,
             )
         ],
         update_conflicts=True,
@@ -303,7 +302,6 @@ def store_event(payload, threshold, exclude_talkgroup, raw_threshold=None) -> St
             "stop_at",
             "duration_ms",
             "is_native_session_id",
-            "payload",
         ],
         unique_fields=["session_id"],
     )

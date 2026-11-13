@@ -286,7 +286,7 @@ class RebuildTests(TestCase):
         QSO.objects.create(
             session_id="orphan", source_call="EA7KLK", talkgroup_id=214,
             destination_name="Spain", start_at=self._at(5), stop_at=self._at(5) + timedelta(seconds=10),
-            duration_ms=10000, payload={},
+            duration_ms=10000,
         )
         make_event("live", self._at(0, 1))
 

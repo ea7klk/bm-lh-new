@@ -121,21 +121,20 @@ class EquivalenceTests(TestCase):
                 start_at=now - timedelta(minutes=minutes),
                 stop_at=now - timedelta(minutes=minutes) + timedelta(seconds=5 + index % 30),
                 duration_ms=(5 + index % 30) * 1000,
-                payload={},
             ))
         # A QSO whose talkgroup no longer exists: the join is nullable.
         rows.append(QSO(
             session_id="eq-orphan", source_call="EA7KLK", source_name="Operator",
             talkgroup_id=999999, destination_name="Gone",
             start_at=now - timedelta(minutes=30), stop_at=now - timedelta(minutes=29),
-            duration_ms=60000, payload={},
+            duration_ms=60000,
         ))
         # A callsign that must be excluded by the distinct-source count.
         rows.append(QSO(
             session_id="eq-unknown", source_call="unknown", source_name=None,
             talkgroup_id=spain.talkgroup_id, destination_name="Spain",
             start_at=now - timedelta(minutes=45), stop_at=now - timedelta(minutes=44),
-            duration_ms=60000, payload={},
+            duration_ms=60000,
         ))
         QSO.objects.bulk_create(rows)
 

@@ -114,7 +114,12 @@ class QSO(models.Model):
     duration_ms = models.IntegerField()
     is_native_session_id = models.BooleanField(default=True)
     ingested_at = models.DateTimeField(default=timezone.now)
-    payload = models.JSONField(default=dict)
+    # There used to be a payload JSONField here holding a copy of the raw event.
+    # Measured in production: 760 bytes per row, 2,668 MB across 3.68M rows,
+    # 71.7% of the table's heap -- and a byte-identical duplicate of
+    # raw_events.payload, which the archiver already ships to object storage.
+    # No query selected it, and rebuild took its input from raw_events, not from
+    # here. It was removed in migration 0013.
 
     class Meta:
         db_table = "qsos"

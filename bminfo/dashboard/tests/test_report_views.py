@@ -38,7 +38,6 @@ class ReportViewDatabaseTests(TestCase):
             start_at=start_at,
             stop_at=start_at + timedelta(milliseconds=duration_ms),
             duration_ms=duration_ms,
-            payload={"SessionID": session_id},
         )
 
     def test_report_api_builds_summary_trends_and_concurrency_data(self):

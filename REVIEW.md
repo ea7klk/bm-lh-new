@@ -73,6 +73,12 @@ document** — every finding below is recorded, not applied.
   with the site palette, including a dark nav rail. Verified by driving the pages
   in a browser at 1440 px and 390 px rather than by reading the CSS, which is how
   the four defects listed under "The admin theme" were found.
+- Removed the redundant `qsos.payload` column after measuring it: 2,668 MB,
+  71.7% of the table's heap, a byte-identical duplicate of `raw_events.payload`
+  in 200 of 200 sampled rows, and read by no query. Migration `0011`, with the
+  collector and rebuild no longer writing it and a regression test pinning all
+  three. `ROLLUP.md` records the measurements, the deploy order and what is left
+  to do to reclaim the space.
 - Audited runtime and dependency currency: read the versions actually installed
   in the running production image rather than trusting `requirements.txt`,
   compared every direct package with its current upstream release, checked the

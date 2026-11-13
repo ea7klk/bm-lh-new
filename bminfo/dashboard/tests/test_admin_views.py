@@ -37,7 +37,7 @@ class AdminViewDatabaseTests(TestCase):
         QSO.objects.create(
             session_id="old-qso", source_call="EA7KLK", talkgroup_id=21403,
             destination_name="Alicante", start_at=now - timedelta(days=40),
-            stop_at=now - timedelta(days=40) + timedelta(seconds=5), duration_ms=5000, payload={},
+            stop_at=now - timedelta(days=40) + timedelta(seconds=5), duration_ms=5000,
         )
         valid = self.client.get("/administration/counts/qsos/1/")
         self.assertEqual(valid.status_code, 200)

@@ -151,7 +151,6 @@ def _candidate(payload: dict, start_at, stop_at, *, threshold: float, exclude_ta
         "start_at": start_at,
         "stop_at": stop_at,
         "duration_ms": round((stop_at - start_at).total_seconds() * 1000),
-        "payload": payload,
     }
 
 
@@ -188,7 +187,7 @@ def rebuild_from_sources(*, threshold: float, exclude_talkgroup: int, include_ar
                     "source_id", "source_call", "source_name", "talkgroup",
                     "destination_call", "destination_name", "context_id", "link_call",
                     "link_name", "link_type_name", "slot", "master", "talker_alias",
-                    "rssi", "ber", "start_at", "stop_at", "duration_ms", "payload",
+                    "rssi", "ber", "start_at", "stop_at", "duration_ms",
                 ],
                 unique_fields=["session_id"],
             )

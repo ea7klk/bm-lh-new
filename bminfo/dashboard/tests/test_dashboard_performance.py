@@ -53,7 +53,7 @@ class WorkMemScopeTests(TransactionTestCase):
                 talkgroup_id=talkgroup.talkgroup_id, destination_name="Spain",
                 start_at=now - timedelta(minutes=index),
                 stop_at=now - timedelta(minutes=index) + timedelta(seconds=8),
-                duration_ms=8000, payload={},
+                duration_ms=8000,
             )
 
     def _session_work_mem(self):

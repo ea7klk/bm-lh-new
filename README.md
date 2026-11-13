@@ -509,22 +509,20 @@ Add Django tests alongside new behavior. The suite includes both
 `SimpleTestCase` unit tests and PostgreSQL-backed tests; run the complete suite
 with Docker Compose or another available PostgreSQL test database.
 
-## Rollups
+## Database size and query performance
 
-`ROLLUP.md` is a design plan, not an implementation: it enumerates every read of
-`qsos`, records the shape each one needs, and proposes daily-grain summary
-tables only for the queries whose grain they can actually serve. It also states
-which queries a rollup cannot answer — substring callsign filters, sub-day
-histograms, and per-talkgroup distinct counts — and why those fall back to the
-base table on purpose.
+`ROLLUP.md` covers two separate things.
 
-It also covers the costs of a full hour/day/week/month/year hierarchy and an
-assessment of moving `qsos` to a time-series database. The shortest version of
-that assessment: the `payload` column is a byte-identical second copy of the raw
-event (200 of 200 sampled), is read by no query, and accounts for 2,668 MB —
-71.7% of the `qsos` heap — so dropping it is most of the storage win for about a
-day's work, and it is the change to make before either a rollup or a second
-database is considered. It is also stored uncompressed, which the plan explains.
+**Storage (implemented).** `qsos.payload` held a byte-identical second copy of
+every raw event's payload — 2,668 MB, 71.7% of the table's heap — read by no
+query. Migration `0011` drops it; the collector and rebuild no longer write it.
+Note that `DROP COLUMN` is metadata-only: the space comes back with
+`VACUUM FULL qsos` (or the next compaction pass), not with the migration.
+
+**Query performance (not implemented).** A daily per-talkgroup summary table
+would make the long-range reports one to two orders of magnitude cheaper. It is
+described in outline, with the rules that keep it from serving answers it cannot
+compute correctly, so it can be picked up later without redoing the analysis.
 
 ## Dependencies
 
