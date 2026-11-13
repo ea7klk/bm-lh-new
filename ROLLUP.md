@@ -61,15 +61,39 @@ continues, so ingestion is not lost — the gap is however long the rollout take
 A cleaner alternative, at the cost of a short ingestion pause: stop the
 collector, migrate, start the collector.
 
-### Expected effect on size
+### Effect on size — measured in production after deploy
 
-| | Now | After |
+| | Before | After `VACUUM FULL` |
 | --- | --- | --- |
-| `qsos` heap | 3,722 MB | ~1,050 MB |
-| `qsos` total (heap + indexes) | 5,158 MB | ~2,500 MB |
-| Growth per year | ~17.8 GB | ~8.5 GB |
+| `qsos` heap | 3,722 MB | **824 MB** |
+| `qsos` indexes | 1,434 MB | 1,017 MB |
+| `qsos` total | 5,158 MB | **1,841 MB** |
+| Whole database | 5,596 MB | **2,310 MB** |
+| Bytes per row | 1,012 B | **235 B** |
 
-Projected from the measured column share; confirmed only after the vacuum.
+The heap fell to 22% of its former size — a little better than projected, since
+the estimate assumed a fixed per-row overhead. Indexes shrank 29% as a
+side effect: they point into heap pages, and a table a quarter the size needs
+fewer of them.
+
+`VACUUM FULL` took **41 seconds** on 3.68M rows and held an exclusive lock for
+that duration: the collector paused ingestion and a live page poll would have
+waited. At this table size that window is acceptable once; it is worth knowing
+the next one will be longer as the table regrows.
+
+### The cost paid for it: one collector restart
+
+The deploy rolled the collector to drop the column from its writes. A restart is
+not free here: **a QSO is written only when its session ends**, so any session
+in flight when the collector disconnects is lost — socket.io does not replay it.
+The hour of the rollout finished about 32 QSOs below the hour before it, against
+a normal variance of ±600, so the loss is real but small. Over a 10-day baseline
+about 419 QSOs a day (1.2%) already arrive with no source callsign, most likely
+sessions whose start was missed by an earlier reconnect; this change adds to
+that population by whatever was in flight at the moment of the restart.
+
+This is worth recording because it also applies to the rollback path: rolling
+back re-adds the column and restarts the collector again.
 
 ### Effect on performance
 

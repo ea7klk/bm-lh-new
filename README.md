@@ -517,7 +517,9 @@ with Docker Compose or another available PostgreSQL test database.
 every raw event's payload — 2,668 MB, 71.7% of the table's heap — read by no
 query. Migration `0011` drops it; the collector and rebuild no longer write it.
 Note that `DROP COLUMN` is metadata-only: the space comes back with
-`VACUUM FULL qsos` (or the next compaction pass), not with the migration.
+`VACUUM FULL qsos`, not with the migration. Measured after the vacuum: `qsos`
+5,158 MB → 1,841 MB, the database 5,596 MB → 2,310 MB, 1,012 → 235 bytes per
+row.
 
 **Query performance (not implemented).** A daily per-talkgroup summary table
 would make the long-range reports one to two orders of magnitude cheaper. It is
