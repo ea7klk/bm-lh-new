@@ -518,6 +518,13 @@ which queries a rollup cannot answer — substring callsign filters, sub-day
 histograms, and per-talkgroup distinct counts — and why those fall back to the
 base table on purpose.
 
+It also covers the costs of a full hour/day/week/month/year hierarchy and an
+assessment of moving `qsos` to a time-series database. The shortest version of
+that assessment: the `payload` column holds 80.6% of every QSO row's bytes,
+duplicates data already archived to object storage, and is read by nothing — so
+dropping it is 80% of the storage win for 1% of the work, and it is the change
+to make before either a rollup or a second database is considered.
+
 ## Dependencies
 
 Two files, two jobs:

@@ -612,10 +612,11 @@ the rollup is designed here to be the option that needs no extension.
 
 ## Part 11 — Open questions to resolve before implementing
 
-1. **Measure the T2 multiplier.** `distinct (day, source_call, talkgroup)` in
-   production over a representative fortnight gives the real size of the
-   exact-distinct-source table. One query. It decides whether per-talkgroup
-   unique-source counts are exact or dropped on long ranges.
+1. ~~**Measure the T2 multiplier.**~~ — **answered.** Measured against production:
+   **1.25 talkgroups per callsign-day**, projecting to ~1.4M rows/year
+   (~134 MB) for the talkgroup × callsign table. That is small enough to keep
+   per-talkgroup unique-source counts **exact** on coarse grains; the fallback
+   in Part 4 is not needed.
 2. **Decide the retention window.** 13 months is the proposal. It depends on
    whether year-on-year comparison on the same date is a product requirement.
 3. **Decide where the router's boundary falls.** A day is proposed. The report
@@ -627,6 +628,350 @@ the rollup is designed here to be the option that needs no extension.
    callsign list via `max(source_name)`; a rollup would carry "last seen name"
    per callsign-day. This is a display field and tolerates approximation, unlike
    a count — but it should be a stated choice, not an accident.
+6. **Decide `payload`'s fate (Part 14).** Drop the column, move it to a side
+   table, or keep it. The measurement makes this the highest-value single change
+   in the document and the one that needs a product answer — is per-QSO raw
+   payload ever needed from `qsos`, given `raw_events` and the Silo archive
+   already hold it?
+7. **Decide the grain set (Part 13).** Day-and-coarser is clearly worth it; hour
+   grain is worth it only if the histogram leaves the base table, and sub-hour
+   alignment multiplies its cost. This is a product accuracy decision.
+8. **Decide the decomposition rule for partial periods (Part 13).** Largest
+   whole periods plus finest-grain remainders. It needs an invariant test
+   ("parts sum to whole") because a wrong decomposition double-counts silently.
+9. **Confirm no second time-series consumer is hiding (Part 14).** The
+   recommendation against a separate TSDB rests on there being no RSSI/BER
+   timeline or spectrum feed planned. If one is, revisit before building the
+   relational rollups, not after.
+
+## Part 13 — Four grains, and what each one costs
+
+Part 4 proposed day grain only. The question now is a hierarchy: **hour, day,
+week, month, year.** The reframing that makes this tractable is that a
+hierarchy is not a design choice, it is arithmetic.
+
+**Every coarser grain is derived from the one below it.** A week is the sum of
+seven days; a month is the sum of its weeks minus the spill days at either end
+(a month is not a whole number of weeks, so month is the sum of **days**, not of
+weeks); a year is the sum of twelve months. What matters is that only the
+**finest** grain reads `qsos`, and every other grain is a `GROUP BY` over a table
+that is already small. Adding week, month and year is then three views and zero
+extra scan cost.
+
+**Week, month and year cost nothing to compute but do not make queries
+faster.** They are derived from day grain — three `GROUP BY`s over 598k rows a
+year — so they are free to add, but a query answered from them saves only the
+difference between reading 90 day rows and reading 3 month rows: microseconds
+nobody can measure. Their value is different and real: they let the *retention*
+story be honest ("we have monthly totals since 2024") and they let a calendar
+preset like `lastMonth` be answered as one row instead of a decomposition.
+
+**The grain whose width matches the query is the one that makes it cheaper.**
+Two consumers want different widths — calendar axes and histogram buckets — and
+they want different things:
+
+| Grain | Calendar axis it serves | Histogram width it serves | Storage (projected) |
+| --- | --- | --- | --- |
+| hour | the `hourly_activity` chart (hour of day) | 60 s–6 h buckets, approximately | ~1.0M rows/yr, ~96 MB |
+| day | the `daily[]` table, `today`, `yesterday` | 1-day and coarser buckets | 598k rows/yr, ~58 MB |
+| week | the `lastWeek` preset | 3-day and 7-day buckets | 86k rows/yr, ~8 MB |
+| month | the `lastMonth` preset | — | 20k rows/yr, ~2 MB |
+| year | — (no preset uses a calendar year) | — | 1.6k rows/yr, ~0.2 MB |
+
+The storage figures are for `rollup_talkgroup_*` at ~96 bytes/row; week, month
+and year are trivial. **Storage is not the reason to add or skip a grain.**
+
+### The real cost is the time dimension
+
+Multiple grains make a second dimension necessary, and that is where the
+complexity lives. A monthly rollup keyed `(month, talkgroup)` cannot answer
+"September plus ten days of October". It answers whole calendar months. Every
+range in `utils.range_bounds()` that is not a calendar range — `1M` is 30 days
+back from now, not "last calendar month" — ends mid-period.
+
+So the hierarchy needs a `period_kind` dimension:
+
+```text
+    rollup_talkgroup_time
+      period_kind   text        -- 'hour' | 'day' | 'week' | 'month' | 'year'
+      period_start  timestamptz -- UTC-aligned to the kind
+      talkgroup_id  int
+      qso_count     int
+      duration_ms   bigint
+      last_start_at timestamptz
+      first_start_at timestamptz
+      source_count  int         -- distinct sources *within* the period; not summable
+      PRIMARY KEY (period_kind, period_start, talkgroup_id)
+```
+
+and a resolution step in the router: **decompose the requested range into the
+largest whole periods that fit, then answer the two partial ends from the finest
+grain that covers them.** A 30-day range becomes one whole month plus two days,
+or four whole weeks plus two days — whichever leaves the smaller remainder.
+
+This is a real piece of logic, and it has a failure mode that no test will catch
+unless it is written down: **the sum of the parts must equal the whole.** A
+monthly total that includes a week that spills into the next month double-counts.
+The parity test (Part 5) catches it only if the decomposition is exercised for
+every preset range, not just the round ones.
+
+### What actually has to change in the application
+
+Stated per layer, because "add rollups" hides a week of work in the router.
+
+**1. Models and migration.** The table above, plus `rollup_callsign_time` at day
+and coarser grain. Four indexes: `(period_kind, period_start)` for range scans,
+`(talkgroup_id, period_kind, period_start)` for the per-talkgroup lists.
+Existing migration conventions apply — a new migration, never an edited one.
+
+**2. `dashboard_stats.py`.** The single-pass CTE stays as the base-table path.
+A second builder produces the rollup SQL: pick whole periods, union the boundary
+intervals from the base table, aggregate the union. The subtlety is
+`count(DISTINCT source_call)` across the union. Whole periods and partial
+boundaries are disjoint by construction, so a `UNION ALL` followed by
+`GROUP BY talkgroup_id` and `count(DISTINCT source_call)` over
+`(period, talkgroup, source)` rows is exact — but only where those rows exist.
+At day grain they come from T2; at month grain they must come from **day** rows,
+because distinct sources do not deduplicate across a month entry. This means
+`source_count` on coarse grains can serve "how many sources in this period",
+never "how many sources in this range".
+
+**3. `core_views.dashboard_payload`.** Gains the `source` field in the payload
+(Part 6) and nothing else — the router decides; the view reports.
+
+**4. `report_views._report_rows`.** This is the largest change, because it is
+the most Python-shaped code in the application: it loops over every row to build
+`daily`, `hourly`, `weekday`, the histogram and the per-bucket distinct sets.
+Three of those map directly onto rollup rows (`daily` ← day totals;
+`hourly_activity` ← the hour-of-day axis of day grain; `weekday_activity` ← a
+`GROUP BY isodow` over day grain) and fall out of a single query. The histogram
+and `concurrent_activity` do not (R3), so the report gains a **hybrid** path:
+range-level tables from the rollup, histogram and concurrency from the base
+table when the range is long. The alternative — dropping concurrency for long
+ranges — is a product decision, not an engineering one, and should be stated on
+the page if taken.
+
+**5. `auth_views.profile` / `api_stats`.** Switch to `rollup_callsign_time` for
+anything coarser than a day; keep the base table for today. Lifetime totals
+become an index-only scan of ~366 rows per callsign-year.
+
+**6. `public_views` (`grouped_lastheard`, `grouped_callsigns`,
+`active_talkgroups`).** These are per-range aggregates over the unfiltered
+range, so they can use `rollup_talkgroup_time` at day and coarser. `lastheard`
+and the live feed cannot, and should not try (S1, S2).
+
+**7. `collector.py`, `rebuild.py`, the admin retention buttons.** Unchanged for
+reading, but every one of them can invalidate a closed period and must enqueue
+recomputation (Part 5.4). The collector's correction path
+(`collector.py:233-259`) deletes and re-inserts a QSO; if that touches a closed
+day, the day's rows are stale until recomputed.
+
+**8. New management command `rollup_qsos`** with `--day`, `--from`, `--grain`,
+`--verify`. Hour grain rolls up the closed hours of yesterday and today; day
+grain rolls up closed days; week/month/year recompute from day at their boundary.
+The `test_runtime_topology.py` schedule assertion gains a fifth entry.
+
+**9. `test_runtime_topology.py` / new tests.** Parity per grain (Part 5.5), the
+decomposition invariant (parts sum to whole), and a test that a coarse-grain
+range and its finer-grain equivalent return identical JSON.
+
+### Is it worth it?
+
+Measured inputs, and the projections they support.
+
+**Performance.** The dashboard's range presets and which grain serves them:
+
+| Range | Rows scanned today | Rows after hierarchy | Likely served by |
+| --- | --- | --- | --- |
+| 24h and shorter | ≤35k | unchanged | base table (overlaps today) |
+| 2d, 5d, 1w | 70k–245k | 2–7 day rows (or 1 week + days) | day/week rollup for the closed part |
+| 2w, 1M | 500k–1.04M | 30–60 day rows | day/month rollup |
+| 2M, 3M | 2.1M–3.1M | 60–90 day rows | day/month rollup |
+| `lastWeek`, `lastMonth` | a calendar period | calendar weeks/months | week/month rollup exactly |
+
+For `3M`, the report currently loops over ~3.1M rows in Python. Against 90 day
+rows per talkgroup (1,640 × 90 = 148k rows, ~14 MB) it is an index scan of a
+small table. The win is one to two orders of magnitude on the long ranges, which
+is where the application is currently close to unsupportable.
+
+**The histogram is the exception, twice.** Narrow buckets cannot come from day
+or coarser, and the hour grain only approximates them unless the hour is
+aligned to the bucket origin. Hour-aligned rolls (60 s–6 h presets span hours)
+are exact only if the range origin is hour-aligned, which for a "now"-backed
+range it is not. So either the histogram keeps reading the base table, or the
+hour rollup is stored at a **sub-hour** grain (15 minutes), which multiplies its
+row count by four and its storage to ~380 MB/year — still small, but it is no
+longer free.
+
+**Storage.** The full hierarchy, projected: hour 96 MB + day 58 MB + week 8 MB
++ month 2 MB + year 0.2 MB + callsign-day 134 MB + talkgroup×callsign-day
+134 MB ≈ **430 MB/year** against **17.8 GB/year** of raw QSO rows. The
+rollups are **2.4% of the data they replace.**
+
+**The verdict.** The grain hierarchy is **worth it for day and coarser**, and
+that is what should be built: the work of adding week/month/year on top of day
+is three views and a decomposition function, for a few megabytes. The **hour**
+grain is worth it only if the histogram moves off the base table, and that depends
+on whether sub-hour accuracy is required — a decision worth making explicitly
+(Part 11, question 4). Do not build hour grain first.
+
+What the hierarchy does **not** fix: the 24h/1w dashboard, which overlaps today
+and stays on the base table. The most important number in this document is still
+that this whole design leaves the most common view unchanged.
+
+---
+
+## Part 14 — Moving QSO data to a time-series database
+
+The question: move `qsos` to a TSDB entirely, and leave users, sessions and
+tokens in PostgreSQL.
+
+This is a bigger change than every other section combined, so it is worth being
+precise about **what is actually causing the problem**, because the measurement
+below changes the recommended answer.
+
+### What the measurements say
+
+| Measurement | Value | Source |
+| --- | --- | --- |
+| `qsos` heap | 3,722 MB | production, `pg_relation_size` |
+| `qsos` indexes | 1,434 MB | production, `pg_indexes_size` |
+| `qsos` total | 5,158 MB | production |
+| Database total | 5,596 MB | production |
+| **Share of the database that is QSO data** | **92%** | 5,158 / 5,596 |
+| Everything else in PostgreSQL | **~440 MB** | users 296 kB, sessions 64 kB, talkgroups 704 kB, raw events 427 MB |
+| Bytes per QSO row | ~1,012 B | 3,722 MB / 3.68M rows |
+| **`payload` column share of row width** | **80.6%** | `pg_stats.avg_width` across columns |
+
+**The decisive finding is the last row.** The `payload` JSON column averages
+760 bytes per quoted row — 80.6% of all the bytes in the table — and it is a
+copy of the raw event data that `raw_events` also stores and that the archiver
+already ships daily to Silo (`OBJECT-STORAGE.md`). The column is read by
+nothing: the dashboard, the reports, the live feed, the LastHeard lists and the
+profile page all select explicit columns, and `qso_json()` does not touch it.
+It exists because the QSO is a decoded copy of an event.
+
+**A table at ~1,012 B/row whose useful content is ~200 B/row is not a
+time-series problem. It is a factor-of-five storage mistake in one column.**
+At the current rate that column alone is ~9.5 GB/year of heap, plus its share of
+the index bloat and the TOAST table, for data already archived twice.
+
+### Therefore: three options, in increasing order of cost
+
+**Option 1 — drop or externalise `payload` (a day's work).**
+
+Make it a nullable column, or move it to a separate `qso_payload` table keyed by
+`session_id` that is written only when an operator asks for it (or never, since
+`raw_events` + the Silo archive already hold the source data). Expected effect,
+projected from the measured column share:
+
+- heap 3,722 MB → roughly **1.0–1.2 GB** for the same rows (the remaining
+  columns are ~200 B/row plus TOAST overhead);
+- indexes shrink somewhat (the primary key and the covering index do not carry
+  `payload`, so their share is unchanged; the heap-level saving is the bulk);
+- total `qsos` ≈ **5,158 MB → ~2.5 GB**, and the annual growth roughly
+  **17.8 GB → ~8.5 GB**, of which the rest could be trimmed the same way.
+
+The parity risk is real but bounded: dropping a column changes nothing that a
+query reads, and the collector and rebuild write it, so `collector.py` and
+`rebuild.py` are the only writers to touch. The migration is a `DROP COLUMN` —
+PostgreSQL 16 marks the column dropped without rewriting the table, so the space
+comes back as the table is rewritten by the next compaction pass
+(`archiver.py`, which already runs `VACUUM FULL`).
+
+**This is the recommendation, and it should be step 0 of any of the other
+options.** It is 80% of the storage win for about 1% of the work, and it makes
+every subsequent option cheaper because everything downstream deals with a
+five-times-smaller table.
+
+**Option 2 — the rollup hierarchy (Parts 4 and 13) with bounded retention.**
+
+Build the day-and-coarser rollups, then cap `qsos` at a retention window
+(13 months proposed). Storage becomes: bounded `qsos` (a plateau) + ~430 MB/year
+of rollups. Historical queries keep working from the rollups forever.
+
+**Option 3 — a dedicated TSDB for `qsos`.**
+
+If QSO rows leave PostgreSQL entirely, the app has two databases and a new class
+of problem. Before choosing it, be clear about what it buys and what it costs.
+
+**What a TSDB buys.** TimescaleDB over the existing PostgreSQL is the smallest
+step: it is a PostgreSQL extension, so `qsos` stays SQL, the ORM mostly keeps
+working, and continuous aggregates are the rollup hierarchy maintained by the
+database instead of by our command. Partitioning by time (Part 6 of the earlier
+analysis in `REVIEW.md`) also gives fast range deletion and index locality.
+
+**What a separate TSDB (InfluxDB, ClickHouse) costs.** Every one of these is
+true today and would stop being true:
+
+- `filtered_qsos()` returns a Django queryset built from ORM `Q` objects and
+  composed into a raw SQL CTE with `query.sql_with_params()`
+  (`dashboard_stats._base_statement`). A non-SQL store has no queryset; the
+  single-pass query would be rewritten in that store's language, and the
+  "the fast path cannot drift from the ORM path" property — which the code
+  currently gets for free by reusing the ORM's own SQL — is lost.
+- `QSO.talkgroup` is a join to `talkgroups` with a `PROTECT` FK used for
+  continent/country filters. Moving `qsos` out means denormalising geography
+  onto every QSO row (more storage, and a sync problem when
+  `sync_talkgroups` changes a classification) or cross-database joins in the
+  application.
+- `collector.py` writes inside `transaction.atomic()` with `close_all()` per
+  event; the write path would become two writes to two stores with no shared
+  transaction — so a QSO can exist in one and not the other.
+- `rebuild.py`, the admin retention buttons, `retention_counts` and
+  `_maintenance_stats` all assume one database.
+- Backups, restores, monitoring, the NetworkPolicy, the CronJob manifest and the
+  Secrets inventory all double. `SECRETS.md` and `fleet/bminfo/workloads.yaml`
+  each gain a service.
+
+The Python client landscape matters too: `timescaledb` on PyPI is the
+**asyncpg-based driver at 0.2.x**, not the extension; the extension itself is
+not in the current `postgres:16` image (measured: `pg_available_extensions`
+returns nothing for `timescaledb` or `pg_partman`), so adopting it means a new
+image and an extension version to track. That is a real but small step compared
+with a second product.
+
+**Recommendation.** Do not move `qsos` to a separate TSDB now. The measured
+evidence does not support it: after Option 1, the QSO table is ~2.5 GB and
+grows ~8.5 GB/year; after Option 1 plus the rollup hierarchy, historical queries
+never touch it and its size is capped by retention. A second database would be
+bought to solve a storage problem that one column caused and one retention
+policy fixed.
+
+**Revisit TSDB if any of these become true:**
+
+1. Queries need a grain the rollup cannot carry — sub-hour concurrency over a
+   month, or per-second breakdowns.
+2. Ingestion grows by an order of magnitude (say >350k QSOs/day), where
+   PostgreSQL's write amplification becomes the bottleneck before reads are.
+3. A second, genuinely time-series consumer appears — live spectrum data, RSSI/BER
+   timelines at per-transmission resolution — that wants downsampling and
+   continuous aggregates natively.
+4. The archive becomes a query source: the Silo files are already one Parquet
+   conversion away from being queryable with DuckDB, which is the cheapest way
+   to satisfy "query history without a second database server".
+
+At that point, **TimescaleDB first**: same PostgreSQL, same backups, same
+Secrets, ORM mostly intact, and continuous aggregates replace the custom rollup
+command. A separate store only if Timescale's chunking is measurably inadequate,
+which nothing in these measurements suggests.
+
+### The coarse answer, if the question is "is it worth it at all"
+
+| Change | Work | Storage effect | Performance effect |
+| --- | --- | --- | --- |
+| Drop `payload` | ~1 day | −~60% of `qsos` | small (less heap to scan) |
+| Day+ rollups | ~1–2 weeks | +~430 MB/yr | long ranges 10–100× |
+| Retention at 13 months | ~1 day + policy | caps QSO growth | none |
+| Hour grain | +3 days | +96 MB/yr | histogram only, approximately |
+| Separate TSDB | weeks–months | −92% of DB | long ranges only |
+
+The first three together cost about two weeks and turn an unbounded 17.8 GB/year
+into a ~430 MB/year plateau for history with bounded rows. The separate TSDB
+costs weeks more, removes 92% of the database, and leaves the same 1w dashboard
+exactly as slow — because that query reads the base table either way.
+
+---
 
 ## Part 12 — Limits of this plan
 
@@ -639,3 +984,15 @@ the rollup is designed here to be the option that needs no extension.
   thing that will notice it.
 - This plan does not address `_maintenance_stats` (S8), which remains the
   slowest query in the application (91 s) and is in `REVIEW.md` as M1.
+- The four-grain sizing in Part 13 projects from measured cardinals (2,728
+  distinct talkgroup-hours/day, 1,640 active talkgroups, 3,055 callsigns/day,
+  1.25 talkgroups per callsign-day) and an assumed ~96 bytes/rollup row. Only
+  the row counts are measured; the byte estimate is not, and a rollup row with
+  text keys and TIMESTAMPTZ columns could plausibly be twice that.
+- The TSDB analysis in Part 14 is an assessment, not a benchmark. No second
+  database was provisioned to compare, and the Timescale continuous-aggregate
+  timings quoted (none are) would need a spike on a copy before anyone commits.
+- The `payload` saving (Part 14, Option 1) is projected from the measured
+  `avg_width` share (80.6%) and the heap figure. PostgreSQL's `DROP COLUMN`
+  reclaims no space until the table is rewritten, so the projected 5.2 GB → 2.5 GB
+  arrives after the next compaction, not on the deploy.
