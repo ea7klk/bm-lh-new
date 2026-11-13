@@ -216,7 +216,7 @@ spec:
         - secretRef:
             name: bminfo-object-store
             optional: true
-        image: ghcr.io/ea7klk/bminfo-new:v1.2.28@sha256:3b6802e21f3cf6299a569d4d288e88b07b0d3722ca357a6d45ff443536b600f8
+        image: ghcr.io/ea7klk/bminfo-new:v1.2.29@sha256:f869f51f75b44d2e10119d27dc28823fe522235a4606f8acff8f109220053121
         imagePullPolicy: IfNotPresent
         name: web
         ports:
@@ -420,7 +420,7 @@ spec:
             envFrom:
             - secretRef:
                 name: web-env
-            image: ghcr.io/ea7klk/bminfo-new:v1.2.28@sha256:3b6802e21f3cf6299a569d4d288e88b07b0d3722ca357a6d45ff443536b600f8
+            image: ghcr.io/ea7klk/bminfo-new:v1.2.29@sha256:f869f51f75b44d2e10119d27dc28823fe522235a4606f8acff8f109220053121
             imagePullPolicy: IfNotPresent
             name: purge-unverified-users
             resources:
@@ -473,7 +473,7 @@ spec:
         envFrom:
         - secretRef:
             name: web-env
-        image: ghcr.io/ea7klk/bminfo-new:v1.2.28@sha256:3b6802e21f3cf6299a569d4d288e88b07b0d3722ca357a6d45ff443536b600f8
+        image: ghcr.io/ea7klk/bminfo-new:v1.2.29@sha256:f869f51f75b44d2e10119d27dc28823fe522235a4606f8acff8f109220053121
         imagePullPolicy: IfNotPresent
         name: collector
         resources:
@@ -535,7 +535,7 @@ spec:
             - secretRef:
                 name: bminfo-object-store
                 optional: true
-            image: ghcr.io/ea7klk/bminfo-new:v1.2.28@sha256:3b6802e21f3cf6299a569d4d288e88b07b0d3722ca357a6d45ff443536b600f8
+            image: ghcr.io/ea7klk/bminfo-new:v1.2.29@sha256:f869f51f75b44d2e10119d27dc28823fe522235a4606f8acff8f109220053121
             imagePullPolicy: IfNotPresent
             name: archive-raw-events
             resources:
@@ -587,7 +587,7 @@ spec:
             envFrom:
             - secretRef:
                 name: web-env
-            image: ghcr.io/ea7klk/bminfo-new:v1.2.28@sha256:3b6802e21f3cf6299a569d4d288e88b07b0d3722ca357a6d45ff443536b600f8
+            image: ghcr.io/ea7klk/bminfo-new:v1.2.29@sha256:f869f51f75b44d2e10119d27dc28823fe522235a4606f8acff8f109220053121
             imagePullPolicy: IfNotPresent
             name: cleanup-raw-events
             resources:
@@ -640,7 +640,7 @@ spec:
             envFrom:
             - secretRef:
                 name: web-env
-            image: ghcr.io/ea7klk/bminfo-new:v1.2.28@sha256:3b6802e21f3cf6299a569d4d288e88b07b0d3722ca357a6d45ff443536b600f8
+            image: ghcr.io/ea7klk/bminfo-new:v1.2.29@sha256:f869f51f75b44d2e10119d27dc28823fe522235a4606f8acff8f109220053121
             imagePullPolicy: IfNotPresent
             name: sync-talkgroups
             resources:
