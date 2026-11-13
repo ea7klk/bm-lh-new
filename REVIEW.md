@@ -73,6 +73,16 @@ document** — every finding below is recorded, not applied.
   with the site palette, including a dark nav rail. Verified by driving the pages
   in a browser at 1440 px and 390 px rather than by reading the CSS, which is how
   the four defects listed under "The admin theme" were found.
+- Audited runtime and dependency currency: read the versions actually installed
+  in the running production image rather than trusting `requirements.txt`,
+  compared every direct package with its current upstream release, checked the
+  analysis of each published CVE against this codebase, and proved the proposed
+  upgrades by running the full suite on Python 3.12, 3.14.8 and 3.15.0 and by
+  diffing rendered report output between `reportlab` majors. Recorded in
+  `DEPENDENCIES.md` with an ordered remediation plan. Headline: production pins
+  `Django==6.1` and is three releases behind, two of them security releases;
+  the runtime is on a Python series that left bugfix support in April 2025; and
+  `gunicorn` and `reportlab` are a major behind each.
 - Investigated the `ASGI 'lifespan' protocol appears unsupported` warning from
   the running web deployment by probing the application object directly, reading
   the Uvicorn lifespan implementation, and reproducing the handshake against the
@@ -1755,6 +1765,14 @@ and `idx_scan` counters). The production build time comes from container start
 and migration timestamps rather than from a stopwatch around `CREATE INDEX`, so
 it is accurate to about a second. Everything else in "Scalability" remains a
 proposal and has not been applied.
+
+Dependency and runtime currency is assessed separately in
+`DEPENDENCIES.md`, which reaches a finding this review does not: the pinned
+`Django==6.1` predates two security releases, and the Python series has been out
+of bugfix support since April 2025. Only one of the advisories in those releases
+is reachable here (an HTTP header-parsing DoS); the rest require GeoDjango,
+upload handling, cache middleware or admin formsets, none of which this
+application uses.
 
 Database and cluster state were inspected read-only. No production writes were
 performed, no secrets were printed, and no configuration was changed. Backup and

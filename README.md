@@ -504,3 +504,19 @@ python bminfo/manage.py test dashboard.tests
 Add Django tests alongside new behavior. The suite includes both
 `SimpleTestCase` unit tests and PostgreSQL-backed tests; run the complete suite
 with Docker Compose or another available PostgreSQL test database.
+
+## Dependency currency
+
+`DEPENDENCIES.md` records the audit of the Python runtime, Django and every
+package in `bminfo/requirements.txt` against their current upstream releases, and
+the ordered plan for closing the gaps. It also lists which published CVEs are
+reachable in this codebase and which are not, so a scanner finding can be read in
+context.
+
+Before deploying a version change, confirm there is nothing open against it —
+the audit is dated, and the upstream releases are not:
+
+```bash
+pip list --outdated
+pip-audit -r bminfo/requirements.txt
+```
