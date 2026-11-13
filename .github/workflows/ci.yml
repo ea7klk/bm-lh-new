@@ -6,15 +6,80 @@ on:
   merge_group:
   release:
     types: [published]
+  # Weekly dependency audit. Deliberately off the hour: every scheduled workflow
+  # in the world asks for :00, and GitHub's queue is busiest there.
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    name: Tests
+  lock-check:
+    name: Lock file matches requirements
     if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      # Separate from the test job so pip-tools and its dependencies cannot
+      # join the environment that runs the suite. The suite must run against
+      # exactly what the lock installs, nothing else.
+      - name: Install pip-tools
+        run: python -m pip install --quiet pip-tools
+
+      - name: Recompile into a copy of the committed lock and compare
+        # pip-compile keeps pins already present in its output file as long as
+        # they still satisfy the inputs, so re-running it does not fail merely
+        # because upstream published a release today -- only because
+        # requirements.txt changed without the lock being regenerated.
+        #
+        # Comments are stripped from both sides: pip-compile rewrites the header
+        # with the command line it was invoked with, and the "via" annotations
+        # name the input path, neither of which is a real difference.
+        run: |
+          cp bminfo/requirements.lock "$RUNNER_TEMP/lock.txt"
+          python -m pip-compile --generate-hashes --strip-extras --no-header \
+            --output-file="$RUNNER_TEMP/lock.txt" bminfo/requirements.txt --quiet
+          if ! diff -u \
+              <(grep -vE '^[[:space:]]*#' bminfo/requirements.lock | grep -v '^$') \
+              <(grep -vE '^[[:space:]]*#' "$RUNNER_TEMP/lock.txt" | grep -v '^$'); then
+            echo "::error::bminfo/requirements.lock is out of date. Regenerate it with:"
+            echo "  pip-compile --generate-hashes --strip-extras --output-file=bminfo/requirements.lock bminfo/requirements.txt"
+            exit 1
+          fi
+
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    strategy:
+      # A failure in one lane should not hide the result of the other: the
+      # point of the matrix is to know whether the next Python series works.
+      fail-fast: false
+      matrix:
+        include:
+          # The shipping lane. Installs the hashed lock, so the interpreter,
+          # the package set and the wheels under test are the ones that deploy.
+          - python-version: "3.14"
+            install: "--require-hashes -r bminfo/requirements.lock"
+            cache-path: bminfo/requirements.lock
+          # The probe lane. Python 3.15 works today (verified) and will be the
+          # next upgrade; running the suite here means that upgrade is proven
+          # before it is needed. It installs from requirements.txt rather than
+          # the lock because the lock carries per-wheel hashes for 3.14 -- the
+          # point here is compatibility with the interpreter, not
+          # reproducibility of the exact wheels.
+          - python-version: "3.15"
+            install: "-r bminfo/requirements.txt"
+            cache-path: bminfo/requirements.txt
     services:
       postgres:
         image: postgres:16-alpine
@@ -36,12 +101,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.14"
+          python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: bminfo/requirements.txt
+          cache-dependency-path: ${{ matrix.cache-path }}
 
       - name: Install dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -r bminfo/requirements.txt
+        run: python -m pip install --upgrade pip && python -m pip install ${{ matrix.install }}
 
       - name: Test donation reminder behavior
         run: node --test tests/donation_reminder.test.cjs
@@ -65,6 +130,31 @@ jobs:
           DB_PASSWORD: ci
           DB_HOST: localhost
         run: python bminfo/manage.py test dashboard.tests --verbosity 2
+
+  audit:
+    name: Dependency audit
+    # Scheduled, and on demand. Not on every push: a CVE disclosed upstream
+    # should not fail a pull request that has nothing to do with dependencies.
+    # A red run on the default branch is the signal, and it arrives on its own.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install pip-audit
+        run: python -m pip install --quiet pip-audit
+
+      # Audits the lock, not requirements.txt: the lock is the set that ships.
+      # Advisory databases match versions, so a finding here still needs the
+      # reachability check described in DEPENDENCIES.md before it means much.
+      - name: Audit the locked dependency set
+        run: python -m pip-audit --progress-spinner off -r bminfo/requirements.lock
 
   publish-image:
     name: Publish Docker image

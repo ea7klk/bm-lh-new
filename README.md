@@ -159,7 +159,7 @@ dependencies and set the database variables used in `config/settings.py`:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -r bminfo/requirements.txt
+python -m pip install --require-hashes -r bminfo/requirements.lock
 export APP_SECRET_KEY=dev-only-insecure-signing-key-change-me-0123456789abcdef
 export DB_HOST=localhost
 export DB_NAME=bminfo
@@ -169,6 +169,10 @@ python bminfo/manage.py migrate
 python bminfo/manage.py bootstrap_admin
 python bminfo/manage.py runserver
 ```
+
+Install the lock, not `requirements.txt`: it pins every transitive package and
+every wheel hash, so a local environment is the same set the image ships. See
+[Dependencies](#dependencies) for how to change a version.
 
 Run the collector separately during local development:
 
@@ -505,18 +509,47 @@ Add Django tests alongside new behavior. The suite includes both
 `SimpleTestCase` unit tests and PostgreSQL-backed tests; run the complete suite
 with Docker Compose or another available PostgreSQL test database.
 
-## Dependency currency
+## Dependencies
 
-`DEPENDENCIES.md` records the audit of the Python runtime, Django and every
-package in `bminfo/requirements.txt` against their current upstream releases, and
-the ordered plan for closing the gaps. It also lists which published CVEs are
-reachable in this codebase and which are not, so a scanner finding can be read in
-context.
+Two files, two jobs:
 
-Before deploying a version change, confirm there is nothing open against it —
-the audit is dated, and the upstream releases are not:
+- **`bminfo/requirements.txt`** is the constraint list you edit — the direct
+  dependencies and the ranges they are allowed to move within.
+- **`bminfo/requirements.lock`** is generated from it and is what actually gets
+  installed, by the Dockerfile, by CI and by the local setup above. It pins
+  every transitive package with `--generate-hashes`, so an install either
+  produces the exact set that was tested or fails.
+
+After editing `requirements.txt`, regenerate the lock and commit both:
 
 ```bash
-pip list --outdated
-pip-audit -r bminfo/requirements.txt
+pip install pip-tools
+pip-compile --generate-hashes --strip-extras \
+  --output-file=bminfo/requirements.lock bminfo/requirements.txt
 ```
+
+CI fails if the two disagree, so a constraint change cannot ship with a stale
+lock. The check recompiles in a copy of the committed lock rather than from
+scratch: pip-compile keeps pins that still satisfy the inputs, so a release
+published upstream today does not turn the build red, while an edited
+`requirements.txt` does.
+
+The base image in `bminfo/Dockerfile` is pinned by digest, not by tag, so a base
+OS or Python patch change is a reviewable diff instead of a silent mutation. To
+move it:
+
+```bash
+# resolve the new digest and read the Python version inside it
+curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/python:pull" \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])'
+# then update the FROM line and the comment above it
+```
+
+CI runs the suite twice: on 3.14 against the hashed lock (the set that ships),
+and on 3.15 against `requirements.txt` (a probe, so the next Python upgrade is
+proven before it is needed). A weekly `pip-audit` job against the lock turns a
+new advisory into a failed run on `main` instead of a thing nobody notices.
+
+`DEPENDENCIES.md` records the audit that produced this arrangement: what was
+behind, which published CVEs are reachable in this codebase and which are not,
+and the evidence for each upgrade.
