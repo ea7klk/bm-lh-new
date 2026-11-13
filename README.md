@@ -509,6 +509,15 @@ Add Django tests alongside new behavior. The suite includes both
 `SimpleTestCase` unit tests and PostgreSQL-backed tests; run the complete suite
 with Docker Compose or another available PostgreSQL test database.
 
+## Rollups
+
+`ROLLUP.md` is a design plan, not an implementation: it enumerates every read of
+`qsos`, records the shape each one needs, and proposes daily-grain summary
+tables only for the queries whose grain they can actually serve. It also states
+which queries a rollup cannot answer — substring callsign filters, sub-day
+histograms, and per-talkgroup distinct counts — and why those fall back to the
+base table on purpose.
+
 ## Dependencies
 
 Two files, two jobs:
