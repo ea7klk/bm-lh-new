@@ -841,24 +841,75 @@ below changes the recommended answer.
 | **Share of the database that is QSO data** | **92%** | 5,158 / 5,596 |
 | Everything else in PostgreSQL | **~440 MB** | users 296 kB, sessions 64 kB, talkgroups 704 kB, raw events 427 MB |
 | Bytes per QSO row | ~1,012 B | 3,722 MB / 3.68M rows |
-| **`payload` column share of row width** | **80.6%** | `pg_stats.avg_width` across columns |
+| **`payload` column share of the heap** | **71.7%** (2,668 MB of 3,722 MB) | `sum(pg_column_size(payload))`, measured |
 
-**The decisive finding is the last row.** The `payload` JSON column averages
-760 bytes per quoted row — 80.6% of all the bytes in the table — and it is a
-copy of the raw event data that `raw_events` also stores and that the archiver
-already ships daily to Silo (`OBJECT-STORAGE.md`). The column is read by
-nothing: the dashboard, the reports, the live feed, the LastHeard lists and the
-profile page all select explicit columns, and `qso_json()` does not touch it.
-It exists because the QSO is a decoded copy of an event.
+**What the `payload` column actually is.** Answered by inspecting it rather than
+by reading the code: it is the complete BrandMeister LastHeard event that
+produced the QSO — every field, not a subset.
+
+```json
+{"BER": 0, "RSSI": -66, "Slot": 1, "Stop": 1794587890, "Event": "Session-Stop",
+ "Route": null, "Start": 1794587881, "State": 2, "Master": "2402", "FlagSet": 0,
+ "LinkCall": "YL3RIM", "LinkName": "MMDVM Host", "LinkType": 1, "SourceID": 2470113,
+ "CallTypes": ["Group", "Voice", "Call"], "ContextID": 247003, "LossCount": 0,
+ "SessionID": "f1f30d9a-…", "SourceCall": "YL3QH", …}
+```
+
+**Is it relevant? No.** Three independent checks:
+
+1. **It is redundant.** Sampled 200 recent QSOs: **200 of 200** have a
+   `raw_events` row whose `payload::text` is byte-identical. The QSO payload is
+   copied from the raw event when the QSO is written, so it is a second copy of
+   a row that is already stored, and already archived to Silo.
+2. **It is read by no query.** Sixteen read sites; none selects `payload`. The
+   JSON serialiser `qso_json()` does not touch it, the dashboard, reports, live
+   feed, LastHeard lists, profile and exports all name their columns explicitly.
+   `RawEventAdmin` shows `payload` read-only, but that is the *raw event's*
+   payload, not this one.
+3. **The rebuild does not need it.** `rebuild.py` reconstructs QSO payloads from
+   `raw_events.payload` (and from the Silo archive) — never from an existing
+   `qsos.payload`. The only thing that reads `qsos.payload` is `rebuild.py:191`,
+   which **writes** the payload it just recomputed. So the column's sole
+   consumer is the process that regenerates it.
+
+**How much space it uses — measured on production, 2026-11-13:**
+
+| Quantity | Value |
+| --- | --- |
+| Rows | 3,680,532 |
+| Average stored size per row | **760 bytes** |
+| Total stored | **2,668 MB** |
+| Share of the `qsos` heap (3,722 MB) | **71.7%** |
+| `raw_events` TOAST used for `qsos` | 0 bytes |
+
+**And it is stored uncompressed.** This is the part worth knowing if the column
+is kept: `pg_column_size` is *larger* than the decompressed text for every row
+sampled (median stored 756 B against 617 B of text), and across 400 random rows
+the maximum stored value is 801 B — the inline cap. PostgreSQL inlines a value
+under ~2 kB after trying to compress it, and only compresses it if the result
+fits in that same window. This payload compresses to about 10% (measured:
+`gzip -9` over 500 payloads, 310,029 B → 32,355 B; pglz compresses the JSON text
+to 627 B against 760 B jsonb), so the compressed form would fit easily — but the
+per-row limit is applied *before* the compressed size is considered, so every
+row takes the inline-uncompressed path and the compressor's work is thrown away.
+Nothing is TOASTed, the TOAST table for `qsos` is empty, and the heap pays the
+full 760 B per row.
 
 **A table at ~1,012 B/row whose useful content is ~200 B/row is not a
 time-series problem. It is a factor-of-five storage mistake in one column.**
-At the current rate that column alone is ~9.5 GB/year of heap, plus its share of
-the index bloat and the TOAST table, for data already archived twice.
+At the current rate that column alone is ~9.3 GB/year of heap, for data already
+stored in `raw_events` and already archived to Silo. This corrects an earlier
+reading of this document, which assumed the column was TOASTed and compressed.
 
 ### Therefore: three options, in increasing order of cost
 
-**Option 1 — drop or externalise `payload` (a day's work).**
+**Option 1 — drop `payload` from `qsos` (a day's work).**
+
+There is nothing to externalise: the same bytes already exist in
+`raw_events.payload` and in the Silo archive, and the rebuild reconstructs them
+from there. So this is a `DROP COLUMN` plus deleting the write in
+`collector.py` and the field from the rebuild's `update_fields`, not a migration
+of data.
 
 Make it a nullable column, or move it to a separate `qso_payload` table keyed by
 `session_id` that is written only when an operator asks for it (or never, since
@@ -880,7 +931,7 @@ comes back as the table is rewritten by the next compaction pass
 (`archiver.py`, which already runs `VACUUM FULL`).
 
 **This is the recommendation, and it should be step 0 of any of the other
-options.** It is 80% of the storage win for about 1% of the work, and it makes
+options.** It is ~72% of the heap for about 1% of the work, and it makes
 every subsequent option cheaper because everything downstream deals with a
 five-times-smaller table.
 
@@ -992,7 +1043,8 @@ exactly as slow — because that query reads the base table either way.
 - The TSDB analysis in Part 14 is an assessment, not a benchmark. No second
   database was provisioned to compare, and the Timescale continuous-aggregate
   timings quoted (none are) would need a spike on a copy before anyone commits.
-- The `payload` saving (Part 14, Option 1) is projected from the measured
-  `avg_width` share (80.6%) and the heap figure. PostgreSQL's `DROP COLUMN`
-  reclaims no space until the table is rewritten, so the projected 5.2 GB → 2.5 GB
-  arrives after the next compaction, not on the deploy.
+- The `payload` saving (Part 14, Option 1) is measured — 2,668 MB stored, 71.7%
+  of the heap. PostgreSQL's `DROP COLUMN` reclaims no space until the table is
+  rewritten, so the shrink arrives with the next compaction, not on the deploy,
+  and `VACUUM FULL` on a 3.7 GB table needs free disk equal to its size and takes
+  it offline for the duration.

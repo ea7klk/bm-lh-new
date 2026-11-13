@@ -520,10 +520,11 @@ base table on purpose.
 
 It also covers the costs of a full hour/day/week/month/year hierarchy and an
 assessment of moving `qsos` to a time-series database. The shortest version of
-that assessment: the `payload` column holds 80.6% of every QSO row's bytes,
-duplicates data already archived to object storage, and is read by nothing — so
-dropping it is 80% of the storage win for 1% of the work, and it is the change
-to make before either a rollup or a second database is considered.
+that assessment: the `payload` column is a byte-identical second copy of the raw
+event (200 of 200 sampled), is read by no query, and accounts for 2,668 MB —
+71.7% of the `qsos` heap — so dropping it is most of the storage win for about a
+day's work, and it is the change to make before either a rollup or a second
+database is considered. It is also stored uncompressed, which the plan explains.
 
 ## Dependencies
 
