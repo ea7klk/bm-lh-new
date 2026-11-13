@@ -3,13 +3,26 @@
 Date: 2026-11-13
 Scope: the Python runtime the application ships on, the Django version it pins,
 and every direct package in `bminfo/requirements.txt`.
-Status: **findings only — no version has been changed.** This document is the
-remediation plan; applying it is a separate, deployable change.
 
 Versions are stated as of the audit date. Re-check before acting on them:
 `python --version`, `pip list --outdated`, and the upstream pages named below.
 
-## Verdict
+## Remediation status
+
+| Step | Change | Status |
+| --- | --- | --- |
+| 1 | Django `==6.1` → `==6.1.3` | **done** — v1.2.26 |
+| 2 | reportlab `>=4.2,<5` → `>=5.1,<6` | **done** — v1.2.26 |
+| 3 | gunicorn `>=23,<24` → `>=26.2,<27` | **done** — v1.2.26 |
+| 4 | Hashed lock file + pinned base image digest | pending |
+| 5 | Python 3.12 → 3.14 | **done** — this release |
+| 6 | CI version matrix + scheduled `pip-audit` | pending |
+
+The findings below are preserved as written at audit time, because the reasoning
+— which CVEs are reachable and why — is the part worth keeping. Where a step has
+since shipped, that is marked in the table above and noted in place.
+
+## Verdict (at audit time)
 
 - **Python 3.12 is out of bugfix support** and has been since 2025-04-02. It
   still receives security fixes until 2028, but no ordinary bug or regression
@@ -291,11 +304,16 @@ Then, after the rollout: `/health/` returns 200, the web log has no
 `appears unsupported`, no restart loop, and one PDF and one XLSX export download
 and open.
 
-## Not changed by this document
+## What has since changed
 
-No version was bumped. Production still runs Django 6.1, gunicorn 23.0.0,
-reportlab 4.5.1 on Python 3.12.16 — so the reachable advisory in step 1 remains
-open until step 1 is applied and deployed.
+Steps 1–3 shipped in **v1.2.26** and step 5 in the release that followed, so at
+the time of writing production runs Django 6.1.3, gunicorn 26.2.0, reportlab
+5.1.0 on Python 3.14, `pip-audit` reports no known vulnerabilities, and the
+CVE-2026-84429 header-parsing advisory that was reachable here is closed.
+
+Still open: step 4 (lock file and digest pin — the repository is still
+non-reproducible) and step 6 (CI matrix and scheduled audit — currency is still
+checked by hand rather than by CI).
 
 ## Limits of this audit
 

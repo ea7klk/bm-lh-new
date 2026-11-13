@@ -153,7 +153,7 @@ included, so the mapping cannot be dropped again unnoticed.
 
 ## Run locally
 
-Python 3.12 is recommended. Start PostgreSQL, then install the Django
+Python 3.14 is recommended. Start PostgreSQL, then install the Django
 dependencies and set the database variables used in `config/settings.py`:
 
 ```bash

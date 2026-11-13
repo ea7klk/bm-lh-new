@@ -4,7 +4,7 @@ This guidance applies to the entire repository.
 
 ## Project
 
-This repository contains one application: a Python 3.12 Django and Channels
+This repository contains one application: a Python 3.14 Django and Channels
 service in `bminfo/`. It collects BrandMeister LastHeard events, stores them
 in PostgreSQL, and serves dashboards, live updates, reports, account flows, and
 administrative tools.
