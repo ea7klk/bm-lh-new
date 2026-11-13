@@ -46,7 +46,10 @@ jobs:
         # name the input path, neither of which is a real difference.
         run: |
           cp bminfo/requirements.lock "$RUNNER_TEMP/lock.txt"
-          python -m pip-compile --generate-hashes --strip-extras --no-header \
+          # "python -m piptools compile", not "python -m pip-compile": the
+          # hyphenated name is only the console script, and invoking it as a
+          # module fails with "No module named pip-compile".
+          python -m piptools compile --generate-hashes --strip-extras --no-header \
             --output-file="$RUNNER_TEMP/lock.txt" bminfo/requirements.txt --quiet
           if ! diff -u \
               <(grep -vE '^[[:space:]]*#' bminfo/requirements.lock | grep -v '^$') \
@@ -154,7 +157,9 @@ jobs:
       # Advisory databases match versions, so a finding here still needs the
       # reachability check described in DEPENDENCIES.md before it means much.
       - name: Audit the locked dependency set
-        run: python -m pip-audit --progress-spinner off -r bminfo/requirements.lock
+        # Module name is pip_audit, not pip-audit. Getting this wrong here costs
+        # a week of silence, because this job only runs on the schedule.
+        run: python -m pip_audit --progress-spinner off -r bminfo/requirements.lock
 
   publish-image:
     name: Publish Docker image
