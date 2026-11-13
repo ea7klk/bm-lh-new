@@ -383,8 +383,9 @@ roughly 12 GB.
 
 User-visible text lives in `dashboard/translations.json`, one catalogue per
 locale (English, Spanish, German, French). When adding or changing a key, update
-all four — `dashboard/tests/test_branding.py` and `test_emails.py` assert key
-parity and catch a locale that falls back to English.
+all four — `dashboard/tests/test_branding.py`, `test_emails.py` and
+`test_admin_theme.py` assert key parity and catch a locale that falls back to
+English.
 
 Account emails keep one section per purpose (`emailVerification`,
 `passwordReset`, `emailChange`). Each section carries its own greeting, expiry,
@@ -421,6 +422,44 @@ assets.
 The BrandMeister name and logo belong to BrandMeister. Their use here is
 descriptive, to identify the data source; anyone redeploying this project should
 review that use against BrandMeister's own trademark policy.
+
+## Django admin
+
+`/admin/` is the standard Django admin, carrying the same shell as the rest of
+the site so an operator does not have to change mental context to use it.
+
+- **Navigation.** A **Back to the site** button sits at the right of the header
+  on every admin page, and the admin index opens with an *Application* panel
+  linking the dashboard, live QSOs, reports, maintenance and about pages. The
+  maintenance screen (`/administration/`), which has no model of its own, is
+  reachable from there and from the same panel.
+- **Theme.** `dashboard/static/dashboard/admin.css` repaints Django's CSS custom
+  properties with the site palette (`#dd4b39` accent, `#222d32` header and nav
+  rail, `#ecf0f5` frame, square controls) and the nav sidebar becomes the dark
+  left rail. The admin has a single light theme: Django's dark-mode stylesheet is
+  not loaded and its toggle is removed, because a half-rethemed dark admin is
+  worse than none.
+- **Language.** Django's admin strings come from Django's own catalogues, which
+  only switch when a locale is activated, so `dashboard/middleware.py` activates
+  the requested locale for `/admin/` requests only. Without it a German visitor
+  would see the translated wordmark above Django's English "Log in". The
+  activation is deliberately scoped: applying it site-wide would also change
+  Django's date and number formats on the statistics pages, which format their
+  own output.
+
+`templates/admin/base_site.html` supplies the wordmark and return link;
+`templates/admin/index.html` adds the quick-link panel (the rest of that file
+mirrors Django's own index template and needs re-syncing on a Django upgrade).
+`dashboard/tests/test_admin_theme.py` covers all of it, including that the nav
+and the theme survive an upgrade, and that the locale activation does not leak
+to other URLs.
+
+**Known gap.** The body text of `/administration/` (the maintenance screen) is
+still hardcoded English, including the strings its JavaScript builds at runtime.
+Its chrome and page title are translated, so a non-English operator sees a
+localised header above English content. Localising it means adding roughly
+forty-five keys across four locales and injecting the catalogue into its script
+the way `dashboard/base.html` does; that work is not done.
 
 ## Main endpoints
 

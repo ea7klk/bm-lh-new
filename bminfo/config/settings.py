@@ -57,6 +57,9 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # Activates Django's own translations for /admin/ only; see
+    # dashboard/middleware.py for why this is not a global LocaleMiddleware.
+    "dashboard.middleware.AdminLocaleMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]

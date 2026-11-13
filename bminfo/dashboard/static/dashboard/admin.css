@@ -1,0 +1,615 @@
+/* BrandMeister Classic, applied to the Django admin.
+
+   The application's own stylesheet lives inline in dashboard/base.html. This is
+   the admin's counterpart: the same palette, metrics and square controls, so
+   moving between /admin/ and the statistics pages does not feel like changing
+   products.
+
+   Palette (identical to the app): accent #dd4b39, frame #ecf0f5, sidebar and
+   header #222d32, border #d2d6de, ink #3f4a54, muted #7b8794.
+
+   Django 6.1's admin is built on CSS custom properties, so almost everything
+   below is a variable assignment. The structural rules that follow exist only
+   where a variable cannot express the shape: the header wordmark, the return
+   link, table headings and control corners.
+
+   Dark mode is disabled in admin/base_site.html (the dark-mode-vars block is
+   empty) and the toggle is removed by admin/color_theme_toggle.html. That is
+   deliberate: the application has one light theme, and a partially rethemed
+   dark admin is worse than none. */
+
+/* ------------------------------------------------------------------ palette */
+html,
+html[data-theme="light"],
+:root {
+  --primary: #dd4b39;          /* calendar/autocomplete highlight */
+  --secondary: #222d32;        /* header, default buttons, selected rows */
+  --accent: #fbfcfd;           /* calendar caption, header branding wash */
+  --primary-fg: #fff;
+
+  --body-fg: #3f4a54;
+  --body-bg: #ecf0f5;          /* the app's frame colour */
+  --body-quiet-color: #7b8794;
+  --body-medium-color: #5b6672;
+  --body-loud-color: #222d32;
+
+  --header-color: #b8c7ce;
+  --header-branding-color: #fff;
+  --header-bg: #222d32;
+  --header-link-color: #fff;
+
+  --breadcrumbs-fg: #7b8794;
+  --breadcrumbs-link-fg: #374151;
+  --breadcrumbs-bg: #fff;
+
+  /* #c0392b rather than the accent itself: on white it reaches 5.4:1, while
+     #dd4b39 sits at 4.1:1 and fails AA for body-sized link text. The accent is
+     still used for buttons and rules, where contrast is against white text. */
+  --link-fg: #c0392b;
+  --link-hover-color: #922b21;
+  --link-selected-fg: #b03a2b;
+
+  --hairline-color: #e3e7ec;
+  --border-color: #d2d6de;
+
+  --error-fg: #9f1239;
+
+  --message-debug-bg: #eef2f5;
+  --message-info-bg: #eaf4fb;
+  --message-success-bg: #eefaf2;
+  --message-warning-bg: #fff8ec;
+  --message-error-bg: #fdeeef;
+
+  --darkened-bg: #fbfcfd;
+  --selected-bg: #eef2f5;
+  --selected-row: #fff6f5;
+
+  --button-fg: #fff;
+  --button-bg: #dd4b39;
+  --button-hover-bg: #d73925;
+  --default-button-bg: #dd4b39;
+  --default-button-hover-bg: #b03a2b;
+  --close-button-bg: #6b7785;
+  --close-button-hover-bg: #4a545c;
+  --delete-button-bg: #b03a2b;
+  --delete-button-hover-bg: #8f2f22;
+
+  --object-tools-fg: #fff;
+  --object-tools-bg: #dd4b39;
+  --object-tools-hover-bg: #d73925;
+
+  --font-family-primary: "Source Sans Pro", "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+  /* Django calls the calendar-caption wash --accent and the brand red --primary.
+     Structural rules here want the brand red specifically, so it gets its own
+     name: writing var(--accent) for a red rule silently produced #fbfcfd. */
+  --bm-accent: #dd4b39;
+  --bm-accent-hover: #d73925;
+  --bm-accent-deep: #b03a2b;
+}
+
+/* The head of admin/base.html carries <meta name="color-scheme"
+   content="light dark">, which lets the browser paint scrollbars and native
+   controls dark when the OS asks. This property overrides that hint, so the
+   form widgets stay consistent with the theme. */
+html {
+  color-scheme: light;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ------------------------------------------------------------------- header */
+#header {
+  min-height: 50px;                 /* the app's --header-h */
+  height: auto;
+  /* #container is a column flex container, so the header is a flex item with
+     the initial flex: 0 1 auto -- it may shrink. On a long page it shrank to its
+     50px min-height and the second header row (the account links, once they
+     wrap on a phone) overflowed the bar and landed on the page heading. A
+     header is chrome: it should take exactly its content height. */
+  flex: none;
+  padding: 0 15px;
+  gap: 12px;
+  box-sizing: border-box;
+  background: var(--header-bg);
+  border-bottom: 0;
+}
+
+.bm-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 8px 0;
+  text-decoration: none;
+}
+
+.bm-brand img {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  object-fit: contain;
+}
+
+.bm-brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.bm-brand-text strong {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bm-brand-text small {
+  color: #8aa4af;
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+/* Django's #site-name rules do not apply: this theme supplies its own markup. */
+#branding {
+  align-items: center;
+  min-width: 0;
+}
+
+/* The way back to the application. Pushed to the far right, after the account
+   links, so it is the last thing read in the header on every admin page. */
+#user-tools {
+  margin-inline-start: auto;
+  color: var(--header-color);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  text-align: right;
+}
+
+a.bm-return {
+  flex: none;
+  margin-inline-start: 14px;
+  padding: 7px 12px;
+  border: 1px solid #ffffff40;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+a.bm-return:hover,
+a.bm-return:focus {
+  background: #fff;
+  border-color: #fff;
+  color: var(--header-bg);
+  text-decoration: none;
+}
+
+/* -------------------------------------------------------------- breadcrumbs */
+ol.breadcrumbs,
+.breadcrumbs {
+  padding: 9px 15px;
+  background: var(--breadcrumbs-bg);
+  border-bottom: 1px solid var(--border-color);
+  color: var(--breadcrumbs-fg);
+  font-size: 12px;
+}
+
+ol.breadcrumbs a,
+.breadcrumbs a {
+  color: var(--breadcrumbs-link-fg);
+  text-decoration: none;
+}
+
+ol.breadcrumbs a:hover,
+.breadcrumbs a:hover {
+  color: var(--link-fg);
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------ content */
+#content {
+  padding: 15px;
+}
+
+#content h1 {
+  margin: 0 0 14px;
+  font-size: 19px;
+  font-weight: 600;
+  color: #333;
+  line-height: 1.3;
+}
+
+#content h2 {
+  font-weight: 600;
+}
+
+/* Modules are the app's panels: white card, hairline border, red rule on top. */
+.module {
+  background: #fff;
+  border: 1px solid var(--border-color);
+  border-top: 3px solid var(--border-color);
+  border-radius: 0;
+}
+
+#content .module,
+#content-main .module {
+  border-top-color: var(--bm-accent);
+}
+
+/* Django paints module headings and table captions with the *header* colours:
+   .module h2, .module caption and .inline-group h2 use var(--header-bg) with
+   var(--header-link-color) text. That is correct for Django's dark teal header
+   but wrong here, where the heading sits on a light panel like the app's
+   .panel > h2. The background is overridden below, so the foreground has to be
+   overridden with it -- light background plus inherited white text is an
+   invisible heading, which is how this first rendered. */
+.module > h2,
+.module h2,
+.module caption,
+.inline-group h2,
+#nav-sidebar .module caption {
+  background: var(--darkened-bg);
+  color: #333;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.module caption,
+.inline-group h2,
+#nav-sidebar .module caption {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #8a949c;
+}
+
+.module caption a.section:link,
+.module caption a.section:visited,
+.inline-group h2 a,
+#nav-sidebar .module caption a {
+  color: #333;
+  text-decoration: none;
+}
+
+.module caption a.section:hover,
+.inline-group h2 a:hover,
+#nav-sidebar .module caption a:hover {
+  color: var(--link-fg);
+}
+
+/* The nav sidebar highlights the current app in --header-color, which is a
+   light grey meant for the dark header bar; on the sidebar's light background
+   it is nearly unreadable. */
+#nav-sidebar .current-app .section:link,
+#nav-sidebar .current-app .section:visited {
+  color: var(--link-fg);
+  font-weight: 700;
+}
+
+#content-main .module > h2,
+.bm-quicklinks > h2 {
+  border-top: 0;
+}
+
+fieldset.module {
+  border-top: 3px solid var(--bm-accent);
+}
+
+fieldset.module h2 {
+  background: transparent;
+  color: #333;
+}
+
+/* --------------------------------------------------------------- tables */
+.module table thead th,
+.module table thead th a:link,
+.module table thead th a:visited,
+#changelist table thead th,
+#changelist table thead th a:link,
+#changelist table thead th a:visited {
+  background: var(--darkened-bg);
+  color: #8a949c;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  border-bottom: 2px solid var(--hairline-color);
+}
+
+.module table tbody tr:hover,
+#changelist table tbody tr:hover {
+  background: #f9fbfc;
+}
+
+/* -------------------------------------------------- controls and buttons */
+.button,
+input[type="submit"],
+input[type="button"],
+.submit-row input,
+a.button,
+button {
+  border-radius: 0;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="url"],
+input[type="number"],
+input[type="date"],
+input[type="time"],
+textarea,
+select,
+.vTextField {
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  background: #fff;
+}
+
+input:focus,
+textarea:focus,
+select:focus,
+.vTextField:focus {
+  border-color: var(--bm-accent);
+  outline: 2px solid #dd4b3933;
+}
+
+/* The maintenance screen and other custom admin pages use bare <button>
+   elements, which Django styles only when they carry .button. Scoped to
+   modules so the calendar and filter widgets keep their own look. */
+.module button[type="submit"],
+.module button[type="button"] {
+  background: var(--button-bg);
+  color: var(--button-fg);
+  border: 0;
+  border-radius: 0;
+  padding: 8px 13px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.module button[type="submit"]:hover,
+.module button[type="button"]:hover {
+  background: var(--button-hover-bg);
+}
+
+.submit-row {
+  background: var(--darkened-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+}
+
+/* ------------------------------------------------------ nav sidebar (rail)
+   The application's signature is a dark left rail. Django's nav sidebar is the
+   same idea in light grey, so it is repainted to the app's rail colours:
+   #222d32 for the rail, #8aa4af for group captions, #b8c7ce for links, and the
+   accent as the left marker on the current model. The rail is display:none
+   below 768px (Django's own rule), so this does not affect the phone layout. */
+
+#nav-sidebar {
+  background: var(--header-bg);
+  border-right: 1px solid #1a2226;
+  border-top-color: transparent;
+}
+
+#nav-sidebar .module {
+  background: transparent;
+  border: 0;
+}
+
+#nav-sidebar .module caption {
+  background: transparent;
+}
+
+#nav-sidebar .module caption,
+#nav-sidebar .module caption a.section:link,
+#nav-sidebar .module caption a.section:visited {
+  color: #8aa4af;
+}
+
+#nav-sidebar th,
+#nav-sidebar td,
+#nav-sidebar tr {
+  border-color: #2b3a40;
+  background: transparent;
+}
+
+#nav-sidebar th a:link,
+#nav-sidebar th a:visited,
+#nav-sidebar td a:link,
+#nav-sidebar td a:visited {
+  color: #b8c7ce;
+}
+
+#nav-sidebar th a:hover,
+#nav-sidebar td a:hover {
+  color: #fff;
+}
+
+#nav-sidebar .current-model {
+  background: #1e282c;
+  box-shadow: inset 3px 0 0 var(--bm-accent);
+}
+
+#nav-sidebar .current-model th a:link,
+#nav-sidebar .current-model th a:visited {
+  color: #fff;
+  font-weight: 600;
+}
+
+#nav-sidebar .current-app .section:link,
+#nav-sidebar .current-app .section:visited {
+  color: #fff;
+}
+
+#nav-filter {
+  background: #1a2226;
+  border: 1px solid #46595f;
+  color: #dbe6ea;
+  padding: 5px 7px;
+}
+
+#nav-filter:focus {
+  border-color: var(--bm-accent);
+}
+
+#nav-filter::placeholder {
+  color: #6d8189;
+}
+
+.toggle-nav-sidebar {
+  background: var(--header-bg);
+  border-right: 1px solid #1a2226;
+  color: #b8c7ce;
+}
+
+.toggle-nav-sidebar:hover,
+.toggle-nav-sidebar:focus {
+  background: #1a2226;
+  color: #fff;
+}
+
+/* ------------------------------------------------------------ admin index */
+.bm-quicklinks {
+  margin-bottom: 20px;
+  border-top-color: var(--bm-accent);
+}
+
+.bm-quicklinks > h2 {
+  margin: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--hairline-color);
+}
+
+.bm-quicklinks-hint {
+  margin: 0;
+  padding: 10px 12px 0;
+  color: var(--muted, #7b8794);
+  font-size: 12.5px;
+}
+
+.bm-quicklinks-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  list-style: none;
+}
+
+/* Django styles bare list items with a marker, which a flex row turns into a
+   stray bullet before each pill. */
+.bm-quicklinks-list li {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bm-quicklinks-list a {
+  display: inline-block;
+  padding: 8px 13px;
+  border: 1px solid var(--border-color);
+  background: #fff;
+  color: #4a545c;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.bm-quicklinks-list a:hover,
+.bm-quicklinks-list a:focus {
+  border-color: var(--bm-accent);
+  background: var(--bm-accent);
+  color: #fff;
+}
+
+/* ------------------------------------------------------------- responsive */
+
+/* Django's responsive.css is linked after this file (the `responsive` block in
+   admin/base.html comes after `extrastyle`), so at narrow widths any rule of
+   equal specificity here loses to it. Below 1024px it turns #header into a
+   vertical column -- correct for a single-line wordmark, wrong for a wordmark
+   plus a return button, which then stack and overflow the bar and land on top
+   of the page heading. The rules below are prefixed with `body` so they outrank
+   responsive.css instead of silently doing nothing. */
+
+@media (max-width: 1024px) {
+  body #header {
+    flex-direction: row;
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 50px;
+    align-items: center;
+    padding: 6px 10px;
+    gap: 4px 10px;
+  }
+
+  body #branding {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* The wordmark is long; the tagline is the part that can go. */
+  .bm-brand-text small {
+    display: none;
+  }
+
+  .bm-brand-text strong {
+    max-width: 46vw;
+  }
+
+  /* Account links move to their own row rather than disappearing: they carry
+     the only Log out control the admin has. */
+  body #user-tools {
+    order: 3;
+    flex: 1 1 100%;
+    margin: 0;
+    text-align: left;
+    font-size: 0.625rem;
+    line-height: 1.8;
+  }
+
+  body a.bm-return {
+    order: 2;
+    margin-inline-start: auto;
+  }
+
+  body #content {
+    padding: 10px;
+  }
+}
+
+@media (max-width: 620px) {
+  .bm-brand-text strong {
+    font-size: 12px;
+  }
+
+  a.bm-return {
+    padding: 6px 9px;
+    font-size: 11px;
+  }
+
+  body #content {
+    padding: 10px;
+  }
+
+  ol.breadcrumbs,
+  .breadcrumbs {
+    padding: 8px 10px;
+  }
+}

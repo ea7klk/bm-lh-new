@@ -270,6 +270,11 @@
       "emailChangeInvalidTitle": "Email change link unavailable"
     },
     "admin": {
+      "backToApp": "Back to the site",
+      "administration": "Administration",
+      "appLinks": "Application",
+      "appLinksHint": "The statistics pages this admin belongs to.",
+      "maintenance": "Maintenance",
       "login": "Admin panel",
       "setPassword": "Set ADMIN_PASSWORD before using the admin panel.",
       "password": "Password",
@@ -860,6 +865,11 @@
       "emailChangeInvalidTitle": "Enlace de cambio de correo no disponible"
     },
     "admin": {
+      "backToApp": "Volver al sitio",
+      "administration": "Administraci\u00f3n",
+      "appLinks": "Aplicaci\u00f3n",
+      "appLinksHint": "Las p\u00e1ginas de estad\u00edsticas a las que pertenece esta administraci\u00f3n.",
+      "maintenance": "Mantenimiento",
       "login": "Panel de administraci\u00f3n",
       "setPassword": "Configura ADMIN_PASSWORD antes de usar el panel.",
       "password": "Contrase\u00f1a",
@@ -1450,6 +1460,11 @@
       "emailChangeInvalidTitle": "Link zur E-Mail-Änderung nicht verfügbar"
     },
     "admin": {
+      "backToApp": "Zur\u00fcck zur Website",
+      "administration": "Verwaltung",
+      "appLinks": "Anwendung",
+      "appLinksHint": "Die Statistikseiten, zu denen diese Verwaltung geh\u00f6rt.",
+      "maintenance": "Wartung",
       "login": "Admin-Panel",
       "setPassword": "Setzen Sie ADMIN_PASSWORD, bevor Sie das Admin-Panel verwenden.",
       "password": "Passwort",
@@ -2040,6 +2055,11 @@
       "emailChangeInvalidTitle": "Lien de modification d'e-mail indisponible"
     },
     "admin": {
+      "backToApp": "Retour au site",
+      "administration": "Administration",
+      "appLinks": "Application",
+      "appLinksHint": "Les pages de statistiques auxquelles cette administration appartient.",
+      "maintenance": "Maintenance",
       "login": "Panneau d'administration",
       "setPassword": "D\u00e9finissez ADMIN_PASSWORD avant d'utiliser le panneau.",
       "password": "Mot de passe",

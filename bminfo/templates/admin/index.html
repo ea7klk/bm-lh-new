@@ -1,0 +1,74 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static log admin_filters %}
+
+{# The admin index is where an administrator arrives with no idea how to get
+   back to what they were doing. The header link in base_site.html covers every
+   page; this panel is the prominent version on the page people actually land
+   on, and it also surfaces the maintenance screen, which otherwise has no entry
+   point in the admin at all.
+
+   The rest of this file mirrors Django 6.1's admin/index.html. It is copied
+   rather than inherited because extending it would recurse -- this file has the
+   same name as the template it replaces. Re-sync against upstream on a Django
+   upgrade; the recent-actions sidebar is the part that drifts. #}
+
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static "admin/css/dashboard.css" %}">{% endblock %}
+
+{% block coltype %}colMS{% endblock %}
+
+{% block bodyclass %}{{ block.super }} dashboard{% endblock %}
+
+{% block nav-breadcrumbs %}{% endblock %}
+
+{% block nav-sidebar %}{% endblock %}
+
+{% block content %}
+<div id="content-main" class="app-list">
+
+  <div class="module bm-quicklinks">
+    <h2>{{ labels.admin.appLinks|default:'Application' }}</h2>
+    <p class="bm-quicklinks-hint">{{ labels.admin.appLinksHint|default:'The statistics pages this admin belongs to.' }}</p>
+    <ul class="bm-quicklinks-list">
+      <li><a href="{% url 'dashboard' %}">{{ labels.common.dashboard|default:'Dashboard' }}</a></li>
+      <li><a href="{% url 'live-qsos' %}">{{ labels.home.liveQsos|default:'Live QSOs' }}</a></li>
+      <li><a href="{% url 'reports' %}">{{ labels.home.reports|default:'Reports' }}</a></li>
+      <li><a href="{% url 'admin-maintenance' %}">{{ labels.admin.maintenance|default:'Maintenance' }}</a></li>
+      <li><a href="{% url 'about' %}">{{ labels.about.title|default:'About' }}</a></li>
+    </ul>
+  </div>
+
+  {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
+</div>
+{% endblock %}
+
+{% block sidebar %}
+<div id="content-related">
+    <div class="module" id="recent-actions-module">
+        <h2>{% translate 'Recent actions' %}</h2>
+        <h3>{% translate 'My actions' %}</h3>
+            {% get_admin_log 10 as admin_log for_user user %}
+            {% if not admin_log %}
+            <p>{% translate 'None available' %}</p>
+            {% else %}
+            <ul class="actionlist">
+            {% for entry in admin_log %}
+            <li class="{% if entry.is_addition %}addlink{% endif %}{% if entry.is_change %}changelink{% endif %}{% if entry.is_deletion %}deletelink{% endif %}">
+                <span class="visually-hidden">{% if entry.is_addition %}{% translate 'Added:' %}{% elif entry.is_change %}{% translate 'Changed:' %}{% elif entry.is_deletion %}{% translate 'Deleted:' %}{% endif %}</span>
+                {% if entry.is_deletion or not entry.get_admin_url %}
+                    {{ entry.object_repr|to_object_display_value }}
+                {% else %}
+                    <a href="{{ entry.get_admin_url }}">{{ entry.object_repr|to_object_display_value }}</a>
+                {% endif %}
+                <br>
+                {% if entry.content_type %}
+                    <span class="mini quiet">{% filter capfirst %}{{ entry.content_type.name }}{% endfilter %}</span>
+                {% else %}
+                    <span class="mini quiet">{% translate 'Unknown content' %}</span>
+                {% endif %}
+            </li>
+            {% endfor %}
+            </ul>
+            {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -13,6 +13,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from . import jobs
+from .i18n import locale_from_request, translate
 from .models import QSO, MaintenanceRun, RawEvent, RawEventArchive, ServiceHeartbeat, User, UserSession
 from .qso_rules import raw_event_threshold_seconds
 
@@ -83,7 +84,10 @@ def _maintenance_stats():
 
 @staff_member_required
 def maintenance(request):
+    # "title" feeds the admin breadcrumb and the page heading, so the screen
+    # says where it is instead of trailing a bare "Home" link.
     return render(request, "admin/maintenance.html", {
+        "title": translate(locale_from_request(request), "admin.maintenance"),
         "quality": {},
         "users": User.objects.only("id", "callsign", "email", "is_active").order_by("callsign"),
         "archive_job": jobs.last_run(MaintenanceRun.ARCHIVE),

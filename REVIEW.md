@@ -62,6 +62,17 @@ document** — every finding below is recorded, not applied.
   Fleet GitRepo reads `fleet/bminfo` only, no test, workflow, or script referenced
   it, and the repository's secret handling already worked by cluster Secret
   reference rather than by decryption.
+- Restyled the Django admin to match the application and gave it a way back.
+  The admin shipped stock Django templates and Django's blue-grey theme, with the
+  only route to the statistics pages being a small "View site" link buried in the
+  account toolbar -- a different product with no exit. `templates/admin/base_site.html`
+  now supplies the wordmark and a **Back to the site** button on every admin page,
+  `templates/admin/index.html` opens with an *Application* panel linking the
+  dashboard, live QSOs, reports, maintenance and about pages, and
+  `dashboard/static/dashboard/admin.css` repaints Django's CSS custom properties
+  with the site palette, including a dark nav rail. Verified by driving the pages
+  in a browser at 1440 px and 390 px rather than by reading the CSS, which is how
+  the four defects listed under "The admin theme" were found.
 - Investigated the `ASGI 'lifespan' protocol appears unsupported` warning from
   the running web deployment by probing the application object directly, reading
   the Uvicorn lifespan implementation, and reproducing the handshake against the
@@ -888,6 +899,44 @@ be sent (`auth_views.py:72-78`), which is the right pattern. The same
 discipline applied to the three settings above would have prevented the most
 serious finding in this document, and each is a small `raise
 ImproperlyConfigured` away.
+
+**The admin was a second product.** The Django admin is its own presentation
+layer -- its own templates, its own stylesheet, its own idea of a header -- and
+nothing in the codebase connected it to the application. The result was a stock
+blue-grey admin whose only route back to the site was a "View site" link in the
+account toolbar, which is exactly the kind of dead end that makes an operator
+open a second tab. It now shares the palette, the wordmark and the favicon, and
+carries a return button in the header of every page.
+
+Four defects surfaced only by looking at the rendered pages, and are worth
+recording because each was invisible in the source:
+
+1. Module headings were white on white. Django paints `.module caption` and
+   `.module h2` with `var(--header-link-color)` on `var(--header-bg)`; the theme
+   overrode the background to the panel's light tone but not the foreground, so
+   every section title disappeared.
+2. Structural rules used Django's `--accent`, which in admin is the calendar
+   caption wash (`#f5dd5d` by default), not the brand red. Red top rules and the
+   current-page marker rendered near-white. The theme now defines its own
+   `--bm-accent` rather than borrowing a name that means something else.
+3. The header lost its second row on a phone. `#container` is a column flex
+   container, so the header is a flex item with the initial `flex: 0 1 auto`; on a
+   long page it shrank to its 50 px `min-height` and the wrapped account links
+   overflowed the bar onto the page heading. Fixed with `flex: none`.
+4. Django's `responsive.css` is linked after `extrastyle`, so every equal-specificity
+   override in the theme lost below 1024 px -- the reason the header stacked
+   vertically despite the layout rules being present. The narrow-width rules are
+   `body`-prefixed to outrank it, and the ordering constraint is documented in the
+   stylesheet.
+
+**Localisation of the admin.** The application translates its own strings without
+activating a locale; Django's admin strings come from Django's catalogues and
+only switch when one is activated. Adding translated admin chrome therefore made
+pages *worse* at first: a German wordmark above Django's English "Log in".
+`dashboard/middleware.py` now activates the requested locale for `/admin/`
+requests only, which also makes `<html lang>` correct. It is deliberately not a
+site-wide `LocaleMiddleware`: that would switch Django's date and number
+formats on the statistics pages, which format their own output.
 
 **Smaller structural notes.**
 

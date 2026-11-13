@@ -1,4 +1,7 @@
 {% extends "admin/base_site.html" %}
+{# The view supplies "title"; admin/base.html would render it as an <h1>, so the
+   block is emptied to avoid a second heading above the one below. #}
+{% block content_title %}{% endblock %}
 {% block content %}
 <h1>BrandMeister maintenance and data quality</h1>
 <div class="module"><table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody id="qualityMetrics"><tr><td colspan="2">Loading data quality metrics…</td></tr></tbody></table></div>

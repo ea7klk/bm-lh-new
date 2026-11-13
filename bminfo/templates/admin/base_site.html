@@ -1,0 +1,43 @@
+{% extends "admin/base.html" %}
+{% load i18n static %}
+
+{# BrandMeister Classic chrome for the Django admin.
+   Django 6.1's admin is variable-driven, so most of the palette is set in
+   dashboard/static/dashboard/admin.css rather than by overriding templates.
+   This file changes only what variables cannot: the wordmark, the return link
+   to the application, and the icon set. #}
+
+{% block title %}{% if title %}{{ title }} | {% endif %}{{ labels.common.appName|default:'BrandMeister Statistics by EA7KLK' }}{% endblock %}
+
+{# The application has a single light theme. Leaving Django's dark stylesheet in
+   place would produce a half-rethemed admin whenever the operating system
+   prefers dark, because dark_mode.css redefines the same variables this theme
+   sets. Dropping the block also drops admin/js/theme.js, which is why the
+   toggle button is removed in admin/color_theme_toggle.html -- a button with no
+   handler is worse than no button. #}
+{% block dark-mode-vars %}{% endblock %}
+
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'dashboard/admin.css' %}">{% endblock %}
+
+{% block extrahead %}
+  <link rel="icon" type="image/png" sizes="32x32" href="{% static 'dashboard/favicon-32.png' %}">
+  <link rel="apple-touch-icon" sizes="180x180" href="{% static 'dashboard/apple-touch-icon.png' %}">
+  <meta name="theme-color" content="#dd4b39">
+{% endblock %}
+
+{% block branding %}
+<a class="bm-brand" href="{% url 'admin:index' %}">
+  <img src="{% static 'dashboard/brandmeister-logo.png' %}" alt="" width="26" height="26">
+  <span class="bm-brand-text">
+    <strong>{{ labels.common.appName|default:'BrandMeister Statistics by EA7KLK' }}</strong>
+    <small>{{ labels.admin.administration|default:'Administration' }}</small>
+  </span>
+</a>
+{% endblock %}
+
+{# Present on every admin page, including popups? No: nav-global sits inside the
+   header, which Django skips for popups. Popup windows have their own close
+   control, so that is the right behaviour. #}
+{% block nav-global %}
+<a class="bm-return" href="{% url 'dashboard' %}">&#8592; {{ labels.admin.backToApp|default:'Back to the site' }}</a>
+{% endblock %}
